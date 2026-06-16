@@ -10,6 +10,7 @@ interface Props {
   target: AcquisitionTarget;
   run: GameRun;
   onAcquire: () => void;
+  onDealRoom?: () => void;
   onScout: () => void;
   onOutbid?: () => void;
   onWalk?: () => void;
@@ -33,6 +34,7 @@ export function DealCard({
   target,
   run,
   onAcquire,
+  onDealRoom,
   onScout,
   onOutbid,
   onWalk,
@@ -150,6 +152,14 @@ export function DealCard({
                 </button>
               )}
             </>
+          ) : scouted && onDealRoom ? (
+            <button
+              onClick={onDealRoom}
+              disabled={!canAfford}
+              className="rounded-lg bg-violet-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-600 disabled:opacity-40"
+            >
+              Deal Room
+            </button>
           ) : (
             <button
               onClick={onAcquire}

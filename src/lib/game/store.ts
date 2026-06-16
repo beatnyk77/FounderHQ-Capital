@@ -3,6 +3,15 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { PULSE_MS, WEEK_MS } from "./constants";
+import { recordArchetypeSignal } from "./archetype";
+import {
+  applyIntegration,
+  closeDealRoom,
+  executeDealClose,
+  openDealRoom,
+  runDiligence,
+  selectDealStructure,
+} from "./dealRoom";
 import {
   startFundingCounter,
   submitFundingCounter,
@@ -49,6 +58,12 @@ interface GameStore {
   accelerateTarget: (targetId: string) => void;
   scoutTarget: (targetId: string) => void;
   investigateIntel: (articleId: string) => void;
+  enterDealRoom: (targetId: string) => void;
+  dealRoomDiligence: (level: "quick" | "standard" | "deep") => void;
+  dealRoomStructure: (structure: "cash" | "stock" | "earnout") => void;
+  dealRoomClose: () => void;
+  dealRoomIntegrate: (focus: "culture" | "product" | "sales") => void;
+  dismissDealRoom: () => void;
   exitRun: () => void;
   abandonRun: () => void;
 }
@@ -196,6 +211,11 @@ export const useGameStore = create<GameStore>()(
         let updated = { ...run, ...patch } as GameRun;
         if (action === "cut") {
           updated = recordReputationSwing(updated, -2, "Layoffs", "Workforce cuts — press notes austerity");
+          updated = recordArchetypeSignal(updated, "operator", -1);
+        } else if (action === "hire" || action === "rd") {
+          updated = recordArchetypeSignal(updated, "operator", 1);
+        } else if (action === "sales") {
+          updated = recordArchetypeSignal(updated, "visionary", 1);
         }
         set({ run: updated });
       },
@@ -280,6 +300,42 @@ export const useGameStore = create<GameStore>()(
         set({ run: investigateArticle(run, articleId) });
       },
 
+      enterDealRoom: (targetId) => {
+        const { run } = get();
+        if (!run) return;
+        set({ run: openDealRoom(run, targetId) });
+      },
+
+      dealRoomDiligence: (level) => {
+        const { run } = get();
+        if (!run) return;
+        set({ run: runDiligence(run, level) });
+      },
+
+      dealRoomStructure: (structure) => {
+        const { run } = get();
+        if (!run) return;
+        set({ run: selectDealStructure(run, structure) });
+      },
+
+      dealRoomClose: () => {
+        const { run } = get();
+        if (!run) return;
+        set({ run: executeDealClose(run) });
+      },
+
+      dealRoomIntegrate: (focus) => {
+        const { run } = get();
+        if (!run) return;
+        set({ run: applyIntegration(run, focus) });
+      },
+
+      dismissDealRoom: () => {
+        const { run } = get();
+        if (!run) return;
+        set({ run: closeDealRoom(run) });
+      },
+
       exitRun: () => {
         const { run, leaderboard } = get();
         if (!run) return;
@@ -340,9 +396,28 @@ export const useGameStore = create<GameStore>()(
             })),
           };
         }
+        if (state.run && version < 6) {
+          state.run = {
+            ...state.run,
+            dealRoom: state.run.dealRoom ?? null,
+            archetype: state.run.archetype ?? {
+              aggressiveCapital: 0,
+              operator: 0,
+              dealmaker: 0,
+              visionary: 0,
+            },
+            archetypeRevealed: state.run.archetypeRevealed ?? false,
+            portfolio: state.run.portfolio ?? [],
+            npcs: (state.run.npcs ?? []).map((n) => ({
+              ...n,
+              stance: n.stance ?? "neutral",
+              memory: n.memory ?? [],
+            })),
+          };
+        }
         return state as { run: GameRun | null; leaderboard: LeaderboardEntry[] };
       },
-      version: 5,
+      version: 6,
     },
   ),
 );

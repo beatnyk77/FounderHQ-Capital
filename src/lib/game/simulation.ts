@@ -1,5 +1,8 @@
+import { archetypeScoreMultiplier, createInitialArchetype, recordArchetypeSignal } from "./archetype";
 import { MACRO_BASE } from "./constants";
+import { maybeSpawnChain } from "./eventChains";
 import { getEffectivePreMoney, initFundingStep } from "./fundingTheater";
+import { recordNpcMemory } from "./npcMemory";
 import { seedNPCs } from "./npcs";
 import { generateNews } from "./news";
 import { bumpHeatOnScout, defaultTargetFields } from "./rivalEngine";
@@ -106,11 +109,17 @@ export function createRun(companyName: string, industry: Industry, regime: Macro
     verifiedIntel: [],
     publicNarrative: "",
     pulseCount: 0,
+    dealRoom: null,
+    archetype: createInitialArchetype(),
+    archetypeRevealed: false,
+    portfolio: [],
   };
 }
 
 export function finalizeRun(run: GameRun): GameRun {
-  return { ...run, publicNarrative: buildPublicNarrative(run) };
+  const archetypeRevealed = run.archetypeRevealed || run.week >= 8;
+  const updated = { ...run, archetypeRevealed, publicNarrative: buildPublicNarrative(run) };
+  return updated;
 }
 
 function nextStage(stage: CompanyStage): CompanyStage {
@@ -300,12 +309,12 @@ export function advanceWeek(run: GameRun): GameRun {
 
 export function computeScore(run: GameRun): number {
   const efficiency = run.totalRaised > 0 ? run.revenue / run.totalRaised : 0;
-  return Math.round(
+  const base =
     run.peakValuation / 1e6 * 0.4 +
-      efficiency * 1e6 * 0.2 +
-      run.reputation * 0.1 +
-      run.acquisitions * 5,
-  );
+    efficiency * 1e6 * 0.2 +
+    run.reputation * 0.1 +
+    run.acquisitions * 5;
+  return Math.round(base * archetypeScoreMultiplier(run.archetype));
 }
 
 export function acceptFunding(run: GameRun, event: GameEvent): GameRun {
@@ -314,6 +323,8 @@ export function acceptFunding(run: GameRun, event: GameEvent): GameRun {
 
   if (!rolled.success) {
     let next = recordReputationSwing(run, -8, vc?.name ?? "VC", "Term sheet collapsed — market whispers");
+    next = recordNpcMemory(next, "vc", "Term sheet fail", "negative", "Passed on your round — trust damaged");
+    next = maybeSpawnChain(next, event, "term_sheet", false);
     return {
       ...next,
       status: "active",
@@ -344,6 +355,10 @@ export function acceptFunding(run: GameRun, event: GameEvent): GameRun {
   const newOwnership = run.founderOwnership * (1 - dilution);
 
   let next = recordReputationSwing(run, 5, vc?.name ?? "VC", "Term sheet closed — credibility up");
+  next = recordNpcMemory(next, "vc", "Term sheet closed", "positive", "Funding partnership deepened");
+  const hadCounter = event.payload?.vcResponse === "accepted_counter";
+  next = recordArchetypeSignal(next, hadCounter ? "aggressiveCapital" : "visionary", 2);
+  next = maybeSpawnChain(next, event, "term_sheet", true);
   return {
     ...next,
     status: "active",
@@ -383,6 +398,10 @@ export function resolveReward(run: GameRun, event: GameEvent): GameRun {
   let next = rolled.success
     ? recordReputationSwing(run, 3, "Customer win", "Enterprise deal closed — market notices")
     : run;
+  if (rolled.success) {
+    next = recordArchetypeSignal(next, "operator", 2);
+    next = maybeSpawnChain(next, event, "customer_win", true);
+  }
 
   return {
     ...next,
@@ -414,6 +433,8 @@ export function resolveThreat(run: GameRun, event: GameEvent): GameRun {
   let next = rolled.success
     ? recordReputationSwing(run, 2, "Ops", "Burn spike contained — disciplined operator signal")
     : recordReputationSwing(run, -3, "Ops", "Threat persists — analysts question control");
+  next = recordArchetypeSignal(next, "operator", rolled.success ? 1 : -1);
+  if (!rolled.success) next = maybeSpawnChain(next, event, "threat_mitigate", false);
 
   return {
     ...next,
@@ -456,6 +477,9 @@ export function acquireTarget(
   if (!rolled.success) {
     const breakupFee = price * 0.05;
     let next = recordReputationSwing(run, -5, target.name, "Deal fell through — breakup fee paid");
+    next = recordNpcMemory(next, "rival", "M&A fail", "positive", `Capitalized on your ${target.name} miss`);
+    next = recordArchetypeSignal(next, "dealmaker", 1);
+    next = maybeSpawnChain(next, null, "ma_close", false);
     return {
       ...next,
       status: "active",
@@ -481,6 +505,9 @@ export function acquireTarget(
   }
 
   let next = recordReputationSwing(run, 3, target.name, `Acquired ${target.name} — roll-up narrative builds`);
+  next = recordNpcMemory(next, "journalist", "Acquisition", "positive", `${target.name} adds to roll-up story`);
+  next = recordArchetypeSignal(next, "dealmaker", 2);
+  next = maybeSpawnChain(next, null, "ma_close", true);
   return {
     ...next,
     status: "active",
@@ -490,6 +517,16 @@ export function acquireTarget(
     marketShare: Math.min(40, next.marketShare + 2),
     acquisitions: next.acquisitions + 1,
     valuation: next.valuation + target.synergy * 50_000,
+    portfolio: [
+      {
+        targetId: target.id,
+        name: target.name,
+        week: next.week,
+        integration: "product",
+        synergyRealized: target.synergy,
+      },
+      ...next.portfolio,
+    ],
     targets: next.targets.filter((t) => t.id !== targetId),
     events: next.events.map((e) =>
       e.payload?.targetId === targetId ? { ...e, resolved: true, resolution: rolled.resolution } : e,

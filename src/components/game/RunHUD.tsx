@@ -6,9 +6,13 @@ import { getReputationTier } from "@/lib/design/tokens";
 import { fmtMoney } from "@/lib/format";
 import { OPERATE_COSTS } from "@/lib/game/types";
 import { useGameStore } from "@/lib/game/store";
+import { ArchetypeBadge } from "./ArchetypeBadge";
+import { DealRoomModal } from "./DealRoomModal";
 import { DecisionAlertBanner } from "./DecisionAlertBanner";
 import { DealCard } from "./DealCard";
 import { EventCard } from "./EventCard";
+import { KeyPlayersPanel } from "./KeyPlayersPanel";
+import { PortfolioStrip } from "./PortfolioStrip";
 import { MacroBar } from "./MacroBar";
 import { NewsTicker } from "./NewsTicker";
 import { ReputationLedger } from "./ReputationLedger";
@@ -37,6 +41,12 @@ export function RunHUD() {
   const startPulse = useGameStore((s) => s.startPulse);
   const stopPulse = useGameStore((s) => s.stopPulse);
   const investigateIntel = useGameStore((s) => s.investigateIntel);
+  const enterDealRoom = useGameStore((s) => s.enterDealRoom);
+  const dealRoomDiligence = useGameStore((s) => s.dealRoomDiligence);
+  const dealRoomStructure = useGameStore((s) => s.dealRoomStructure);
+  const dealRoomClose = useGameStore((s) => s.dealRoomClose);
+  const dealRoomIntegrate = useGameStore((s) => s.dealRoomIntegrate);
+  const dismissDealRoom = useGameStore((s) => s.dismissDealRoom);
   const exitRun = useGameStore((s) => s.exitRun);
   const abandonRun = useGameStore((s) => s.abandonRun);
   const decisionQueueRef = useRef<HTMLElement>(null);
@@ -70,6 +80,18 @@ export function RunHUD() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <WeekRecapModal recap={run.weekRecap} onContinue={clearWeekRecap} />
+
+      {run.dealRoom && (
+        <DealRoomModal
+          run={run}
+          room={run.dealRoom}
+          onDiligence={dealRoomDiligence}
+          onStructure={dealRoomStructure}
+          onClose={dealRoomClose}
+          onIntegrate={dealRoomIntegrate}
+          onDismiss={dismissDealRoom}
+        />
+      )}
 
       <div className="border-b border-panel-border bg-panel/40">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3">
@@ -153,6 +175,9 @@ export function RunHUD() {
               </div>
             </div>
 
+            <ArchetypeBadge run={run} />
+            <PortfolioStrip run={run} />
+
             <section>
               <h2 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-text-dim">Operate</h2>
               <div className="grid grid-cols-2 gap-2">
@@ -195,6 +220,7 @@ export function RunHUD() {
                       target={t}
                       run={run}
                       onAcquire={() => buyTarget(t.id)}
+                      onDealRoom={() => enterDealRoom(t.id)}
                       onScout={() => scoutTargetAction(t.id)}
                       onOutbid={t.rivalBid ? () => outbidTarget(t.id) : undefined}
                       onWalk={t.rivalBid ? () => walkFromTarget(t.id) : undefined}
@@ -210,18 +236,7 @@ export function RunHUD() {
           <div className="space-y-4 lg:col-span-3">
             <MacroBar run={run} />
 
-            <div className="rounded-lg border border-panel-border bg-panel/40 p-3">
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-text-dim">Key Players</p>
-              <div className="grid gap-2 sm:grid-cols-3">
-                {run.npcs.map((n) => (
-                  <div key={n.id} className="rounded border border-panel-border bg-background/50 px-2 py-1.5">
-                    <p className="text-[10px] uppercase text-text-dim">{n.role}</p>
-                    <p className="text-xs font-medium text-foreground">{n.name}</p>
-                    <p className="font-mono text-[10px] text-accent">Trust {n.trust}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <KeyPlayersPanel run={run} />
 
             <ReputationLedger run={run} />
 

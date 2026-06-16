@@ -9,6 +9,12 @@ export type IntelType = "rumor" | "regulatory" | "competitive" | "market";
 export type VerifiedOutcome = "confirmed" | "conflicting" | "false_flag";
 export type FundingStep = "review" | "counter" | "resolve";
 export type VcCounterResponse = "pending" | "accepted_counter" | "rejected_counter";
+export type DealRoomPhase = "screen" | "structure" | "close" | "integrate";
+export type DiligenceLevel = "quick" | "standard" | "deep";
+export type DealStructure = "cash" | "stock" | "earnout";
+export type IntegrationFocus = "culture" | "product" | "sales";
+export type NpcStance = "ally" | "neutral" | "hostile";
+export type ArchetypeDimension = "aggressiveCapital" | "operator" | "dealmaker" | "visionary";
 
 export interface MacroState {
   interestRate: number;
@@ -37,11 +43,20 @@ export interface EventResolution {
   modifiers: OddsModifier[];
 }
 
+export interface MemoryEntry {
+  week: number;
+  action: string;
+  sentiment: "positive" | "negative" | "neutral";
+  narrative: string;
+}
+
 export interface NPC {
   id: string;
   name: string;
   role: "vc" | "rival" | "journalist";
   trust: number;
+  stance: NpcStance;
+  memory: MemoryEntry[];
 }
 
 export interface GameEvent {
@@ -53,6 +68,8 @@ export interface GameEvent {
   resolved: boolean;
   expiresAtWeek: number;
   resolution?: EventResolution;
+  parentEventId?: string;
+  chainDepth?: number;
   payload?: {
     roundType?: string;
     amount?: number;
@@ -105,6 +122,34 @@ export interface ReputationSwing {
   delta: number;
   source: string;
   narrative: string;
+}
+
+export interface DealRoomState {
+  targetId: string;
+  phase: DealRoomPhase;
+  diligence?: DiligenceLevel;
+  structure?: DealStructure;
+  integration?: IntegrationFocus;
+  revealedIntel: string[];
+  oddsModifier: number;
+  synergyMultiplier: number;
+  closeSucceeded?: boolean;
+  targetName?: string;
+}
+
+export interface ArchetypeVector {
+  aggressiveCapital: number;
+  operator: number;
+  dealmaker: number;
+  visionary: number;
+}
+
+export interface PortfolioAcquisition {
+  targetId: string;
+  name: string;
+  week: number;
+  integration: IntegrationFocus;
+  synergyRealized: number;
 }
 
 export interface AcquisitionTarget {
@@ -180,7 +225,18 @@ export interface GameRun {
   verifiedIntel: string[];
   publicNarrative: string;
   pulseCount: number;
+  dealRoom: DealRoomState | null;
+  archetype: ArchetypeVector;
+  archetypeRevealed: boolean;
+  portfolio: PortfolioAcquisition[];
 }
+
+export const EMPTY_ARCHETYPE: ArchetypeVector = {
+  aggressiveCapital: 0,
+  operator: 0,
+  dealmaker: 0,
+  visionary: 0,
+};
 
 export interface LeaderboardEntry {
   companyName: string;

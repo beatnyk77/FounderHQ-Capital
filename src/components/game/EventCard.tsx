@@ -91,7 +91,14 @@ export function EventCard({
   return (
     <div className={`rounded-xl border p-4 ${bucketStyles[event.bucket]}`}>
       <div className="flex items-start justify-between gap-2">
-        <p className="text-[10px] uppercase tracking-widest text-text-dim">{event.bucket}</p>
+        <div className="flex items-center gap-2">
+          <p className="text-[10px] uppercase tracking-widest text-text-dim">{event.bucket}</p>
+          {event.parentEventId && (
+            <span className="rounded bg-violet-500/20 px-1.5 py-0.5 font-mono text-[9px] text-violet-300">
+              CHAIN
+            </span>
+          )}
+        </div>
         {weeksLeft > 0 && (
           <span className={`font-mono text-[10px] ${weeksLeft <= 1 ? "text-negative pulse-danger" : "text-caution"}`}>
             ⏱ {weeksLeft}wk left
