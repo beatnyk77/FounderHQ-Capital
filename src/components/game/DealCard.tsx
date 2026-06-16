@@ -2,7 +2,9 @@
 
 import { computeOdds } from "@/lib/game/resolution";
 import { fmtMoney } from "@/lib/format";
+import { buildMaPreviews } from "@/lib/game/previewEngine";
 import type { AcquisitionTarget, GameRun } from "@/lib/game/types";
+import { ConsequencePreview } from "./ConsequencePreview";
 
 interface Props {
   target: AcquisitionTarget;
@@ -16,6 +18,7 @@ export function DealCard({ target, run, onAcquire, onScout }: Props) {
   const odds = computeOdds("ma_close", run, undefined, target);
   const canAfford = run.cash >= target.valuation * 0.3;
   const canScout = !scouted && run.cash >= 25_000;
+  const previews = buildMaPreviews(run, target);
 
   return (
     <div className="rounded-lg border border-panel-border bg-panel/60 px-4 py-3">
@@ -43,6 +46,7 @@ export function DealCard({ target, run, onAcquire, onScout }: Props) {
               </span>
             ))}
           </div>
+          <ConsequencePreview previews={previews} />
         </div>
         <div className="flex shrink-0 flex-col gap-1">
           {!scouted && (

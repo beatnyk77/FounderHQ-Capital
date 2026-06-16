@@ -56,7 +56,7 @@ export function generateNews(
     outlet,
   });
 
-  return {
+  const base: NewsArticle = {
     id: `news-${event.id}`,
     week: event.week,
     headline,
@@ -64,5 +64,48 @@ export function generateNews(
     outlet,
     sentiment:
       event.bucket === "threat" ? "negative" : event.bucket === "reward" ? "positive" : "neutral",
+    relatedEventId: event.id,
   };
+
+  if (event.bucket === "uncertainty" && event.payload?.targetId) {
+    const isReal = seededRandom(run.seed, event.week, `intel-truth-${event.id}`) > 0.2;
+    return {
+      ...base,
+      intelType: "competitive",
+      verifiable: true,
+      verificationCost: 15_000,
+      truthState: isReal ? "confirmed" : "false_flag",
+      relatedTargetId: event.payload.targetId,
+      intelModifier: isReal
+        ? { action: "ma_close", value: 0.08, label: "Verified rumor" }
+        : undefined,
+    };
+  }
+
+  if (event.bucket === "threat") {
+    return {
+      ...base,
+      intelType: "regulatory",
+      verifiable: true,
+      verificationCost: 15_000,
+      truthState: "confirmed",
+      intelModifier: { action: "threat_mitigate", value: 0.06, label: "Verified threat" },
+    };
+  }
+
+  if (event.bucket === "opportunity") {
+    const strongOffer = (event.payload?.amount ?? 0) > run.valuation * 0.2;
+    if (strongOffer) {
+      return {
+        ...base,
+        intelType: "market",
+        verifiable: true,
+        verificationCost: 15_000,
+        truthState: "confirmed",
+        intelModifier: { action: "term_sheet", value: 0.05, label: "Verified terms" },
+      };
+    }
+  }
+
+  return base;
 }

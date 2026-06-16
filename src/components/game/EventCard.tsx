@@ -2,7 +2,14 @@
 
 import { computeOdds } from "@/lib/game/resolution";
 import { fmtMoney } from "@/lib/format";
+import {
+  buildDeclineUncertaintyPreview,
+  buildRewardPreview,
+  buildTermSheetPreviews,
+  buildThreatPreview,
+} from "@/lib/game/previewEngine";
 import type { GameEvent, GameRun } from "@/lib/game/types";
+import { ConsequencePreview } from "./ConsequencePreview";
 
 const bucketStyles: Record<GameEvent["bucket"], string> = {
   opportunity: "border-positive/40 bg-positive/5",
@@ -50,10 +57,26 @@ function OddsChips({ run, event }: { run: GameRun; event: GameEvent }) {
   );
 }
 
+function previewsForEvent(run: GameRun, event: GameEvent) {
+  switch (event.bucket) {
+    case "opportunity":
+      return buildTermSheetPreviews(run, event);
+    case "threat":
+      return buildThreatPreview(run, event);
+    case "reward":
+      return buildRewardPreview(run, event);
+    case "uncertainty":
+      return buildDeclineUncertaintyPreview(run, event);
+    default:
+      return [];
+  }
+}
+
 export function EventCard({ event, run, onAccept, onDecline, onAcquire }: Props) {
   if (event.resolved) return null;
 
   const weeksLeft = event.expiresAtWeek - run.week;
+  const previews = previewsForEvent(run, event);
 
   return (
     <div className={`rounded-xl border p-4 ${bucketStyles[event.bucket]}`}>
@@ -76,6 +99,8 @@ export function EventCard({ event, run, onAccept, onDecline, onAcquire }: Props)
       )}
 
       <OddsChips run={run} event={event} />
+
+      <ConsequencePreview previews={previews} />
 
       {event.resolution && (
         <p className={`mt-2 font-mono text-xs ${event.resolution.success ? "text-positive" : "text-negative"}`}>

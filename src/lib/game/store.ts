@@ -3,6 +3,8 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { WEEK_MS } from "./constants";
+import { investigateArticle } from "./intel";
+import { recordReputationSwing } from "./reputationLedger";
 import {
   acceptFunding,
   acquireTarget,
@@ -31,6 +33,7 @@ interface GameStore {
   declineEvent: (eventId: string) => void;
   buyTarget: (targetId: string) => void;
   scoutTarget: (targetId: string) => void;
+  investigateIntel: (articleId: string) => void;
   exitRun: () => void;
   abandonRun: () => void;
 }
@@ -147,10 +150,13 @@ export const useGameStore = create<GameStore>()(
           case "cut":
             patch.burn = run.burn * 0.9;
             patch.morale = Math.max(20, run.morale - 8);
-            patch.reputation = Math.max(0, run.reputation - 2);
             break;
         }
-        set({ run: { ...run, ...patch } });
+        let updated = { ...run, ...patch } as GameRun;
+        if (action === "cut") {
+          updated = recordReputationSwing(updated, -2, "Layoffs", "Workforce cuts — press notes austerity");
+        }
+        set({ run: updated });
       },
 
       acceptTermSheet: (eventId) => {
@@ -197,6 +203,12 @@ export const useGameStore = create<GameStore>()(
         set({ run: scoutTarget(run, targetId) });
       },
 
+      investigateIntel: (articleId) => {
+        const { run } = get();
+        if (!run) return;
+        set({ run: investigateArticle(run, articleId) });
+      },
+
       exitRun: () => {
         const { run, leaderboard } = get();
         if (!run) return;
@@ -235,9 +247,18 @@ export const useGameStore = create<GameStore>()(
             tickRemainingMs: state.run.tickRemainingMs ?? null,
           };
         }
+        if (state.run && version < 4) {
+          state.run = {
+            ...state.run,
+            investigations: state.run.investigations ?? [],
+            reputationSwings: state.run.reputationSwings ?? [],
+            verifiedIntel: state.run.verifiedIntel ?? [],
+            publicNarrative: state.run.publicNarrative ?? "",
+          };
+        }
         return state as { run: GameRun | null; leaderboard: LeaderboardEntry[] };
       },
-      version: 3,
+      version: 4,
     },
   ),
 );

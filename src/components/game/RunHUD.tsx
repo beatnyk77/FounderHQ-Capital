@@ -1,14 +1,17 @@
 "use client";
 
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import { useGameTabTitle } from "@/hooks/useGameTabTitle";
 import { getReputationTier } from "@/lib/design/tokens";
 import { fmtMoney } from "@/lib/format";
 import { OPERATE_COSTS } from "@/lib/game/types";
 import { useGameStore } from "@/lib/game/store";
+import { DecisionAlertBanner } from "./DecisionAlertBanner";
 import { DealCard } from "./DealCard";
 import { EventCard } from "./EventCard";
 import { MacroBar } from "./MacroBar";
 import { NewsTicker } from "./NewsTicker";
+import { ReputationLedger } from "./ReputationLedger";
 import { RunwayGauge } from "./RunwayGauge";
 import { StatBar } from "./StatBar";
 import { TickerTape } from "./TickerTape";
@@ -26,8 +29,16 @@ export function RunHUD() {
   const declineEvent = useGameStore((s) => s.declineEvent);
   const buyTarget = useGameStore((s) => s.buyTarget);
   const scoutTargetAction = useGameStore((s) => s.scoutTarget);
+  const investigateIntel = useGameStore((s) => s.investigateIntel);
   const exitRun = useGameStore((s) => s.exitRun);
   const abandonRun = useGameStore((s) => s.abandonRun);
+  const decisionQueueRef = useRef<HTMLElement>(null);
+
+  useGameTabTitle(run);
+
+  const scrollToDecisions = useCallback(() => {
+    decisionQueueRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
 
   useEffect(() => {
     if (run?.status === "active" && !run.weekRecap) {
@@ -89,6 +100,7 @@ export function RunHUD() {
         <div className="mx-auto max-w-7xl px-4 pb-3">
           <TickerTape articles={run.news} />
         </div>
+        <DecisionAlertBanner run={run} onScrollToDecisions={scrollToDecisions} />
       </div>
 
       <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
@@ -196,13 +208,22 @@ export function RunHUD() {
               </div>
             </div>
 
+            <ReputationLedger run={run} />
+
             <section>
-              <h2 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-text-dim">Market Wire</h2>
-              <NewsTicker articles={run.news} />
+              <h2 className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-widest text-text-dim">
+                Market Wire
+                <span className="rounded bg-positive/20 px-1.5 py-0.5 font-mono text-[9px] text-positive">LIVE</span>
+              </h2>
+              <NewsTicker
+                articles={run.news}
+                run={run}
+                onInvestigate={(id) => investigateIntel(id)}
+              />
             </section>
 
             {pending.length > 0 && (
-              <section>
+              <section id="decision-queue" ref={decisionQueueRef}>
                 <h2 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-text-dim">
                   Decision Queue ({pending.length} pending)
                 </h2>

@@ -1,6 +1,7 @@
 import { MACRO_BASE } from "./constants";
 import { seedNPCs } from "./npcs";
 import { generateNews } from "./news";
+import { buildPublicNarrative, recordReputationSwing } from "./reputationLedger";
 import { createSeed, seededRandom } from "./rng";
 import { rollResolution } from "./resolution";
 import type {
@@ -96,7 +97,15 @@ export function createRun(companyName: string, industry: Industry, regime: Macro
     tickRemainingMs: null,
     score: 0,
     startedAt: Date.now(),
+    investigations: [],
+    reputationSwings: [],
+    verifiedIntel: [],
+    publicNarrative: "",
   };
+}
+
+export function finalizeRun(run: GameRun): GameRun {
+  return { ...run, publicNarrative: buildPublicNarrative(run) };
 }
 
 function nextStage(stage: CompanyStage): CompanyStage {
@@ -161,16 +170,16 @@ export function generateWeeklyEvents(run: GameRun): GameEvent[] {
 }
 
 export function processExpiredEvents(run: GameRun): GameRun {
-  let reputation = run.reputation;
+  let working = run;
   const events = run.events.map((e) => {
     if (e.resolved || run.week + 1 <= e.expiresAtWeek) return e;
     if (e.bucket === "opportunity" || e.bucket === "uncertainty") {
-      reputation = Math.max(0, reputation - 5);
+      working = recordReputationSwing(working, -5, "Expired deal", `${e.title} expired unanswered`);
       return { ...e, resolved: true };
     }
     return e;
   });
-  return { ...run, events, reputation };
+  return { ...working, events };
 }
 
 export function tickCompany(run: GameRun): Partial<GameRun> {
@@ -269,9 +278,11 @@ export function advanceWeek(run: GameRun): GameRun {
     cliffhanger: buildCliffhanger({ ...working, events: [...working.events, ...eventsWithSpike] }),
   };
 
+  const finalized = finalizeRun(working);
+
   return {
-    ...working,
-    status: needsPause ? "paused" : (working.status ?? run.status),
+    ...finalized,
+    status: needsPause ? "paused" : (finalized.status ?? run.status),
     events: [...working.events, ...eventsWithSpike].slice(-24),
     news: [...news, ...working.news].slice(0, 30),
     valuationHistory,
@@ -294,19 +305,19 @@ export function acceptFunding(run: GameRun, event: GameEvent): GameRun {
   const vc = run.npcs.find((n) => n.role === "vc");
 
   if (!rolled.success) {
+    let next = recordReputationSwing(run, -8, vc?.name ?? "VC", "Term sheet collapsed — market whispers");
     return {
-      ...run,
+      ...next,
       status: "active",
-      reputation: Math.max(0, run.reputation - 8),
-      npcs: run.npcs.map((n) => (n.role === "vc" ? { ...n, trust: Math.max(0, n.trust - 15) } : n)),
-      events: run.events.map((e) =>
+      npcs: next.npcs.map((n) => (n.role === "vc" ? { ...n, trust: Math.max(0, n.trust - 15) } : n)),
+      events: next.events.map((e) =>
         e.id === event.id ? { ...e, resolved: true, resolution: rolled.resolution } : e,
       ),
-      weekRecap: run.weekRecap
+      weekRecap: next.weekRecap
         ? {
-            ...run.weekRecap,
+            ...next.weekRecap,
             resolutions: [
-              ...run.weekRecap.resolutions,
+              ...next.weekRecap.resolutions,
               {
                 title: `${vc?.name ?? "VC"} passed — deal collapsed`,
                 success: false,
@@ -324,28 +335,28 @@ export function acceptFunding(run: GameRun, event: GameEvent): GameRun {
   const dilution = amount / (preMoney + amount);
   const newOwnership = run.founderOwnership * (1 - dilution);
 
+  let next = recordReputationSwing(run, 5, vc?.name ?? "VC", "Term sheet closed — credibility up");
   return {
-    ...run,
+    ...next,
     status: "active",
-    cash: run.cash + amount,
-    totalRaised: run.totalRaised + amount,
+    cash: next.cash + amount,
+    totalRaised: next.totalRaised + amount,
     founderOwnership: newOwnership,
     valuation: preMoney + amount,
-    stage: nextStage(run.stage),
-    reputation: Math.min(100, run.reputation + 5),
-    npcs: run.npcs.map((n) => (n.role === "vc" ? { ...n, trust: Math.min(100, n.trust + 10) } : n)),
+    stage: nextStage(next.stage),
+    npcs: next.npcs.map((n) => (n.role === "vc" ? { ...n, trust: Math.min(100, n.trust + 10) } : n)),
     rounds: [
-      ...run.rounds,
-      { type: event.payload?.roundType ?? "seed", amount, preMoney, week: run.week },
+      ...next.rounds,
+      { type: event.payload?.roundType ?? "seed", amount, preMoney, week: next.week },
     ],
-    events: run.events.map((e) =>
+    events: next.events.map((e) =>
       e.id === event.id ? { ...e, resolved: true, resolution: rolled.resolution } : e,
     ),
-    weekRecap: run.weekRecap
+    weekRecap: next.weekRecap
       ? {
-          ...run.weekRecap,
+          ...next.weekRecap,
           resolutions: [
-            ...run.weekRecap.resolutions,
+            ...next.weekRecap.resolutions,
             {
               title: `${vc?.name ?? "VC"} term sheet closed`,
               success: true,
@@ -361,19 +372,22 @@ export function acceptFunding(run: GameRun, event: GameEvent): GameRun {
 export function resolveReward(run: GameRun, event: GameEvent): GameRun {
   const rolled = rollResolution(run, "customer_win", event.id, event);
 
+  let next = rolled.success
+    ? recordReputationSwing(run, 3, "Customer win", "Enterprise deal closed — market notices")
+    : run;
+
   return {
-    ...run,
+    ...next,
     status: "active",
-    revenue: rolled.success ? run.revenue * 1.15 : run.revenue,
-    reputation: rolled.success ? Math.min(100, run.reputation + 3) : run.reputation,
-    events: run.events.map((e) =>
+    revenue: rolled.success ? next.revenue * 1.15 : next.revenue,
+    events: next.events.map((e) =>
       e.id === event.id ? { ...e, resolved: true, resolution: rolled.resolution } : e,
     ),
-    weekRecap: run.weekRecap
+    weekRecap: next.weekRecap
       ? {
-          ...run.weekRecap,
+          ...next.weekRecap,
           resolutions: [
-            ...run.weekRecap.resolutions,
+            ...next.weekRecap.resolutions,
             {
               title: rolled.success ? "Enterprise deal closed" : "Customer win slipped",
               success: rolled.success,
@@ -389,20 +403,21 @@ export function resolveReward(run: GameRun, event: GameEvent): GameRun {
 export function resolveThreat(run: GameRun, event: GameEvent): GameRun {
   const rolled = rollResolution(run, "threat_mitigate", event.id, event);
 
+  let next = rolled.success
+    ? recordReputationSwing(run, 2, "Ops", "Burn spike contained — disciplined operator signal")
+    : recordReputationSwing(run, -3, "Ops", "Threat persists — analysts question control");
+
   return {
-    ...run,
+    ...next,
     status: "active",
-    reputation: rolled.success
-      ? Math.min(100, run.reputation + 2)
-      : Math.max(0, run.reputation - 3),
-    events: run.events.map((e) =>
+    events: next.events.map((e) =>
       e.id === event.id ? { ...e, resolved: true, resolution: rolled.resolution } : e,
     ),
-    weekRecap: run.weekRecap
+    weekRecap: next.weekRecap
       ? {
-          ...run.weekRecap,
+          ...next.weekRecap,
           resolutions: [
-            ...run.weekRecap.resolutions,
+            ...next.weekRecap.resolutions,
             {
               title: rolled.success ? "Burn spike mitigated" : "Threat persists",
               success: rolled.success,
@@ -424,19 +439,19 @@ export function acquireTarget(run: GameRun, targetId: string): GameRun {
 
   if (!rolled.success) {
     const breakupFee = price * 0.05;
+    let next = recordReputationSwing(run, -5, target.name, "Deal fell through — breakup fee paid");
     return {
-      ...run,
+      ...next,
       status: "active",
-      cash: run.cash - breakupFee,
-      reputation: Math.max(0, run.reputation - 5),
-      events: run.events.map((e) =>
+      cash: next.cash - breakupFee,
+      events: next.events.map((e) =>
         e.payload?.targetId === targetId ? { ...e, resolved: true, resolution: rolled.resolution } : e,
       ),
-      weekRecap: run.weekRecap
+      weekRecap: next.weekRecap
         ? {
-            ...run.weekRecap,
+            ...next.weekRecap,
             resolutions: [
-              ...run.weekRecap.resolutions,
+              ...next.weekRecap.resolutions,
               {
                 title: `${target.name} deal fell through`,
                 success: false,
@@ -449,25 +464,25 @@ export function acquireTarget(run: GameRun, targetId: string): GameRun {
     };
   }
 
+  let next = recordReputationSwing(run, 3, target.name, `Acquired ${target.name} — roll-up narrative builds`);
   return {
-    ...run,
+    ...next,
     status: "active",
-    cash: run.cash - price,
-    employees: run.employees + 5,
-    productScore: Math.min(100, run.productScore + target.synergy / 3),
-    marketShare: Math.min(40, run.marketShare + 2),
-    acquisitions: run.acquisitions + 1,
-    reputation: Math.min(100, run.reputation + 3),
-    valuation: run.valuation + target.synergy * 50_000,
-    targets: run.targets.filter((t) => t.id !== targetId),
-    events: run.events.map((e) =>
+    cash: next.cash - price,
+    employees: next.employees + 5,
+    productScore: Math.min(100, next.productScore + target.synergy / 3),
+    marketShare: Math.min(40, next.marketShare + 2),
+    acquisitions: next.acquisitions + 1,
+    valuation: next.valuation + target.synergy * 50_000,
+    targets: next.targets.filter((t) => t.id !== targetId),
+    events: next.events.map((e) =>
       e.payload?.targetId === targetId ? { ...e, resolved: true, resolution: rolled.resolution } : e,
     ),
-    weekRecap: run.weekRecap
+    weekRecap: next.weekRecap
       ? {
-          ...run.weekRecap,
+          ...next.weekRecap,
           resolutions: [
-            ...run.weekRecap.resolutions,
+            ...next.weekRecap.resolutions,
             {
               title: `Acquired ${target.name}`,
               success: true,

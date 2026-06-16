@@ -1,3 +1,5 @@
+import { getIntelModifiers } from "./intel";
+import { reputationTierOddsModifier } from "./reputationLedger";
 import type { AcquisitionTarget, ActionType, GameEvent, GameRun, OddsBreakdown } from "./types";
 import { seededRandom } from "./rng";
 
@@ -47,6 +49,18 @@ export function computeOdds(
     if (run.burn < run.revenue * 1.2) modifiers.push({ label: "Lean ops", value: 0.1 });
     if (run.morale < 40) modifiers.push({ label: "Low morale", value: -0.1 });
     if (event?.payload?.burnSpikeApplied) modifiers.push({ label: "Burn spike", value: -0.05 });
+  }
+
+  const tierMod = reputationTierOddsModifier(run.reputation);
+  if (tierMod !== 0) {
+    modifiers.push({
+      label: tierMod > 0 ? "Rep tier" : "Low rep",
+      value: tierMod,
+    });
+  }
+
+  for (const intelMod of getIntelModifiers(run, action)) {
+    modifiers.push(intelMod);
   }
 
   const modSum = modifiers.reduce((s, m) => s + m.value, 0);

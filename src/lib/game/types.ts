@@ -4,6 +4,9 @@ export type RunStatus = "active" | "paused" | "exited" | "bankrupt";
 export type EventBucket = "opportunity" | "threat" | "reward" | "uncertainty";
 export type CompanyStage = "pre_seed" | "seed" | "series_a" | "series_b" | "growth";
 export type ActionType = "term_sheet" | "ma_close" | "customer_win" | "threat_mitigate";
+export type IntelTruthState = "unknown" | "confirmed" | "false_flag" | "conflicting";
+export type IntelType = "rumor" | "regulatory" | "competitive" | "market";
+export type VerifiedOutcome = "confirmed" | "conflicting" | "false_flag";
 
 export interface MacroState {
   interestRate: number;
@@ -59,6 +62,12 @@ export interface GameEvent {
   };
 }
 
+export interface IntelModifier {
+  action: ActionType;
+  value: number;
+  label: string;
+}
+
 export interface NewsArticle {
   id: string;
   week: number;
@@ -66,6 +75,29 @@ export interface NewsArticle {
   body: string;
   outlet: string;
   sentiment: "positive" | "negative" | "neutral";
+  intelType?: IntelType;
+  verifiable?: boolean;
+  verificationCost?: number;
+  truthState?: IntelTruthState;
+  verifiedOutcome?: VerifiedOutcome;
+  conflictsWith?: string;
+  relatedTargetId?: string;
+  relatedEventId?: string;
+  intelModifier?: IntelModifier;
+}
+
+export interface InvestigationRecord {
+  articleId: string;
+  week: number;
+  outcome: VerifiedOutcome;
+  cost: number;
+}
+
+export interface ReputationSwing {
+  week: number;
+  delta: number;
+  source: string;
+  narrative: string;
 }
 
 export interface AcquisitionTarget {
@@ -132,6 +164,10 @@ export interface GameRun {
   tickRemainingMs: number | null;
   score: number;
   startedAt: number;
+  investigations: InvestigationRecord[];
+  reputationSwings: ReputationSwing[];
+  verifiedIntel: string[];
+  publicNarrative: string;
 }
 
 export interface LeaderboardEntry {
