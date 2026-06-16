@@ -9,22 +9,28 @@ import {
   advanceWeek,
   computeScore,
   createRun,
+  resolveReward,
+  resolveThreat,
+  scoutTarget,
 } from "./simulation";
-import type { GameEvent, GameRun, Industry, LeaderboardEntry, MacroRegime } from "./types";
+import { freezeTickTimer, resolveTickSchedule } from "./ticker";
+import type { GameRun, Industry, LeaderboardEntry, MacroRegime } from "./types";
 
 interface GameStore {
   run: GameRun | null;
   leaderboard: LeaderboardEntry[];
-  tickId: ReturnType<typeof setInterval> | null;
+  tickId: ReturnType<typeof setTimeout> | null;
   startRun: (name: string, industry: Industry, regime: MacroRegime) => void;
   startTicker: () => void;
-  stopTicker: () => void;
+  stopTicker: (saveRemaining?: boolean) => void;
   tick: () => void;
   resume: () => void;
+  clearWeekRecap: () => void;
   operate: (action: "hire" | "rd" | "sales" | "cut") => void;
   acceptTermSheet: (eventId: string) => void;
   declineEvent: (eventId: string) => void;
   buyTarget: (targetId: string) => void;
+  scoutTarget: (targetId: string) => void;
   exitRun: () => void;
   abandonRun: () => void;
 }
@@ -43,35 +49,80 @@ export const useGameStore = create<GameStore>()(
       },
 
       startTicker: () => {
-        const { tickId } = get();
-        if (tickId) clearInterval(tickId);
-        const id = setInterval(() => get().tick(), WEEK_MS);
+        const { tickId, run } = get();
+        if (tickId) clearTimeout(tickId);
+        if (!run || run.status !== "active" || run.weekRecap) return;
+
+        const now = Date.now();
+        const schedule = resolveTickSchedule(
+          { nextTickAt: run.nextTickAt, tickRemainingMs: run.tickRemainingMs },
+          now,
+          WEEK_MS,
+        );
+
+        set({
+          run: {
+            ...run,
+            nextTickAt: schedule.nextTickAt,
+            tickRemainingMs: schedule.tickRemainingMs,
+          },
+        });
+
+        const id = setTimeout(() => get().tick(), schedule.delayMs);
         set({ tickId: id });
       },
 
-      stopTicker: () => {
-        const { tickId } = get();
-        if (tickId) clearInterval(tickId);
+      stopTicker: (saveRemaining = false) => {
+        const { tickId, run } = get();
+        if (tickId) clearTimeout(tickId);
+
+        if (saveRemaining && run?.status === "active" && run.nextTickAt) {
+          const frozen = freezeTickTimer(
+            { nextTickAt: run.nextTickAt, tickRemainingMs: run.tickRemainingMs },
+            Date.now(),
+          );
+          set({
+            tickId: null,
+            run: { ...run, nextTickAt: frozen.nextTickAt, tickRemainingMs: frozen.tickRemainingMs },
+          });
+          return;
+        }
+
         set({ tickId: null });
       },
 
       tick: () => {
         const { run } = get();
         if (!run || run.status !== "active") return;
-        set({ run: advanceWeek(run) });
+        get().stopTicker();
+        set({
+          run: advanceWeek({
+            ...run,
+            nextTickAt: null,
+            tickRemainingMs: null,
+          }),
+        });
       },
 
       resume: () => {
         const { run } = get();
         if (!run) return;
-        set({ run: { ...run, status: "active" } });
+        set({ run: { ...run, status: "active", weekRecap: null } });
+        get().startTicker();
+      },
+
+      clearWeekRecap: () => {
+        const { run } = get();
+        if (!run) return;
+        set({ run: { ...run, weekRecap: null } });
+        if (run.status === "active") get().startTicker();
       },
 
       operate: (action) => {
         const { run } = get();
-        if (!run || run.status === "bankrupt") return;
+        if (!run || run.status === "bankrupt" || run.operateUsedThisWeek) return;
 
-        const patch: Partial<GameRun> = {};
+        const patch: Partial<GameRun> = { operateUsedThisWeek: true };
         switch (action) {
           case "hire":
             if (run.cash < 80_000) return;
@@ -79,6 +130,7 @@ export const useGameStore = create<GameStore>()(
             patch.employees = run.employees + 2;
             patch.burn = run.burn + 12_000;
             patch.productScore = Math.min(100, run.productScore + 3);
+            patch.morale = Math.min(100, run.morale + 3);
             break;
           case "rd":
             if (run.cash < 50_000) return;
@@ -112,6 +164,18 @@ export const useGameStore = create<GameStore>()(
       declineEvent: (eventId) => {
         const { run } = get();
         if (!run) return;
+        const event = run.events.find((e) => e.id === eventId);
+        if (!event) return;
+
+        if (event.bucket === "reward") {
+          set({ run: resolveReward(run, event) });
+          return;
+        }
+        if (event.bucket === "threat") {
+          set({ run: resolveThreat(run, event) });
+          return;
+        }
+
         set({
           run: {
             ...run,
@@ -125,6 +189,12 @@ export const useGameStore = create<GameStore>()(
         const { run } = get();
         if (!run) return;
         set({ run: acquireTarget(run, targetId) });
+      },
+
+      scoutTarget: (targetId) => {
+        const { run } = get();
+        if (!run) return;
+        set({ run: scoutTarget(run, targetId) });
       },
 
       exitRun: () => {
@@ -150,6 +220,24 @@ export const useGameStore = create<GameStore>()(
         set({ run: null });
       },
     }),
-    { name: "founderhq-capital", partialize: (s) => ({ leaderboard: s.leaderboard }) },
+    {
+      name: "founderhq-capital-v2",
+      partialize: (s) => ({ leaderboard: s.leaderboard, run: s.run }),
+      migrate: (persisted, version) => {
+        const state = persisted as { run?: GameRun | null; leaderboard?: LeaderboardEntry[] };
+        if (state.run && (!state.run.seed || !state.run.npcs)) {
+          state.run = null;
+        }
+        if (state.run && version < 3) {
+          state.run = {
+            ...state.run,
+            nextTickAt: state.run.nextTickAt ?? null,
+            tickRemainingMs: state.run.tickRemainingMs ?? null,
+          };
+        }
+        return state as { run: GameRun | null; leaderboard: LeaderboardEntry[] };
+      },
+      version: 3,
+    },
   ),
 );

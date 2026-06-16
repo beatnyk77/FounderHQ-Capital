@@ -7,16 +7,16 @@ interface Props {
 }
 
 const tones = {
-  default: "text-zinc-100",
-  good: "text-emerald-400",
-  warn: "text-amber-400",
-  bad: "text-rose-400",
+  default: "text-foreground",
+  good: "text-positive",
+  warn: "text-caution",
+  bad: "text-negative",
 };
 
 export function StatBar({ label, value, tone = "default" }: Props) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2">
-      <p className="text-[10px] uppercase tracking-wider text-zinc-500">{label}</p>
+    <div className="rounded-lg border border-panel-border bg-panel/60 px-3 py-2">
+      <p className="text-[10px] uppercase tracking-wider text-text-dim">{label}</p>
       <p className={`font-mono text-sm font-semibold ${tones[tone]}`}>{value}</p>
     </div>
   );

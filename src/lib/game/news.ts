@@ -1,30 +1,32 @@
-import type { GameEvent, MacroState, NewsArticle } from "./types";
+import { pickOutlet } from "./npcs";
+import { seededRandom } from "./rng";
+import type { GameEvent, GameRun, MacroState, NewsArticle } from "./types";
 
 const HEADLINES: Record<string, string[]> = {
   opportunity: [
-    "{company} catches investor attention amid {industry} surge",
-    "Strategic partner eyes collaboration with {company}",
-    "Talent exodus at rival opens hiring window for {company}",
+    "{vc} leads term sheet talks for {company} amid {industry} surge",
+    "{outlet}: {company} catches investor attention in hot {industry} market",
+    "Sources: {vc} circling {company} with board seat demand",
   ],
   threat: [
-    "Regulators scrutinize {industry} sector — {company} on watchlist",
-    "Competitor raises war chest; market share pressure on {company}",
-    "Macro headwinds: rates at {rate}% squeeze startup runway",
+    "{outlet}: Regulators scrutinize {industry} — {company} on watchlist",
+    "{rival} raises war chest; market share pressure on {company}",
+    "Macro headwinds: rates at {rate}% squeeze {company} runway",
   ],
   reward: [
-    "{company} hits revenue milestone — morale surges",
-    "Product launch drives {company} NPS to record highs",
+    "{outlet}: {company} closes enterprise deal — morale surges",
+    "{journalist}: Product launch drives {company} NPS to record highs",
     "Press lauds {company} as {industry} darling",
   ],
   uncertainty: [
-    "Analysts split on {company} valuation amid choppy markets",
-    "Whispers of acquisition interest in {company} — unconfirmed",
-    "Industry cycle shift leaves {company} path unclear",
+    "{journalist}: Analysts split on {company} valuation amid choppy markets",
+    "{rival} rumored to bid on same target as {company} — unconfirmed",
+    "{outlet}: Industry cycle shift leaves {company} path unclear",
   ],
 };
 
-function pick<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
+function pick<T>(arr: T[], seed: number, week: number, salt: string): T {
+  return arr[Math.floor(seededRandom(seed, week, salt) * arr.length)];
 }
 
 function fill(template: string, vars: Record<string, string | number>): string {
@@ -36,12 +38,22 @@ export function generateNews(
   companyName: string,
   industry: string,
   macro: MacroState,
+  run: GameRun,
 ): NewsArticle {
+  const vc = run.npcs.find((n) => n.role === "vc");
+  const rival = run.npcs.find((n) => n.role === "rival");
+  const journalist = run.npcs.find((n) => n.role === "journalist");
+  const outlet = pickOutlet(run.seed, event.week);
+
   const templates = HEADLINES[event.bucket];
-  const headline = fill(pick(templates), {
+  const headline = fill(pick(templates, run.seed, event.week, event.bucket), {
     company: companyName,
     industry,
     rate: (macro.interestRate * 100).toFixed(1),
+    vc: vc?.name ?? "Lead VC",
+    rival: rival?.name ?? "Rival CEO",
+    journalist: journalist?.name ?? "Reporter",
+    outlet,
   });
 
   return {
@@ -49,6 +61,7 @@ export function generateNews(
     week: event.week,
     headline,
     body: event.description,
+    outlet,
     sentiment:
       event.bucket === "threat" ? "negative" : event.bucket === "reward" ? "positive" : "neutral",
   };

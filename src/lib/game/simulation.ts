@@ -1,5 +1,8 @@
 import { MACRO_BASE } from "./constants";
+import { seedNPCs } from "./npcs";
 import { generateNews } from "./news";
+import { createSeed, seededRandom } from "./rng";
+import { rollResolution } from "./resolution";
 import type {
   AcquisitionTarget,
   CompanyStage,
@@ -8,6 +11,7 @@ import type {
   Industry,
   MacroRegime,
   MacroState,
+  WeekRecap,
 } from "./types";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -27,21 +31,37 @@ export function createMacro(regime: MacroRegime, week: number): MacroState {
   };
 }
 
-export function createTargets(industry: Industry): AcquisitionTarget[] {
+export function computeSectorIndex(regime: MacroRegime, week: number, industry: Industry): number {
+  const base = 100;
+  const macro = createMacro(regime, week);
+  const industryBoost: Record<Industry, number> = {
+    ai: 1.15,
+    fintech: 1.05,
+    saas: 1.0,
+    healthtech: 1.08,
+    climate: 1.1,
+    consumer: 0.95,
+  };
+  return base * industryBoost[industry] * (1 + macro.gdpGrowth * 0.5 + Math.sin(week / 8) * 0.03);
+}
+
+export function createTargets(industry: Industry, seed: number): AcquisitionTarget[] {
   return TARGET_NAMES.slice(0, 4).map((name, i) => ({
     id: `target-${i}`,
     name,
     industry,
-    valuation: 2_000_000 + Math.random() * 8_000_000,
-    healthScore: 40 + Math.random() * 50,
-    synergy: 10 + Math.random() * 30,
+    valuation: 2_000_000 + seededRandom(seed, i, `target-val-${name}`) * 8_000_000,
+    healthScore: 40 + seededRandom(seed, i, `target-health-${name}`) * 50,
+    synergy: 10 + seededRandom(seed, i, `target-syn-${name}`) * 30,
   }));
 }
 
 export function createRun(companyName: string, industry: Industry, regime: MacroRegime): GameRun {
+  const seed = createSeed();
   const macro = createMacro(regime, 0);
   return {
     id: uid(),
+    seed,
     companyName,
     industry,
     regime,
@@ -60,12 +80,20 @@ export function createRun(companyName: string, industry: Industry, regime: Macro
     totalRaised: 0,
     peakValuation: 2_000_000,
     founderOwnership: 100,
+    sectorIndex: computeSectorIndex(regime, 0, industry),
     macro,
+    npcs: seedNPCs(seed),
     events: [],
     news: [],
-    targets: createTargets(industry),
+    targets: createTargets(industry, seed),
+    scoutedTargets: [],
     rounds: [],
     acquisitions: 0,
+    valuationHistory: [2_000_000],
+    weekRecap: null,
+    operateUsedThisWeek: false,
+    nextTickAt: null,
+    tickRemainingMs: null,
     score: 0,
     startedAt: Date.now(),
   };
@@ -83,14 +111,15 @@ function eventForBucket(
 ): Omit<GameEvent, "id" | "resolved"> {
   const week = run.week + 1;
   const expires = week + 2;
+  const vc = run.npcs.find((n) => n.role === "vc");
 
   if (bucket === "opportunity" && run.stage !== "growth") {
     const amount = run.valuation * (0.15 + run.macro.marketSentiment * 0.1);
     return {
       week,
       bucket,
-      title: `${run.stage === "pre_seed" ? "Angel" : "VC"} term sheet incoming`,
-      description: `Investors offer $${(amount / 1e6).toFixed(1)}M at $${(run.valuation / 1e6).toFixed(1)}M pre-money.`,
+      title: `${vc?.name ?? "VC"} sends term sheet`,
+      description: `Offer: $${(amount / 1e6).toFixed(1)}M at $${(run.valuation / 1e6).toFixed(1)}M pre-money. Board seat included.`,
       expiresAtWeek: expires,
       payload: { roundType: run.stage === "pre_seed" ? "seed" : "series_a", amount, preMoney: run.valuation },
     };
@@ -100,8 +129,9 @@ function eventForBucket(
       week,
       bucket,
       title: "Burn spike",
-      description: `Operating costs jump 8% — runway tightens.`,
+      description: `Operating costs jump 8% — runway tightens. Mitigate before costs compound.`,
       expiresAtWeek: expires,
+      payload: { burnSpikeApplied: false },
     };
   }
   if (bucket === "reward") {
@@ -109,16 +139,17 @@ function eventForBucket(
       week,
       bucket,
       title: "Customer win",
-      description: `Enterprise deal adds $${(run.revenue * 0.15 / 1000).toFixed(0)}K MRR.`,
+      description: `Enterprise deal could add ~$${(run.revenue * 0.15 / 1000).toFixed(0)}K MRR if closed.`,
       expiresAtWeek: expires,
     };
   }
-  const target = run.targets[Math.floor(Math.random() * run.targets.length)];
+  const rival = run.npcs.find((n) => n.role === "rival");
+  const target = run.targets[Math.floor(seededRandom(run.seed, week, "uncertainty-target") * run.targets.length)];
   return {
     week,
     bucket,
     title: "Acquisition rumor",
-    description: `${target?.name ?? "Rival"} may be open to talks at $${((target?.valuation ?? 3e6) / 1e6).toFixed(1)}M.`,
+    description: `${target?.name ?? "Rival"} may be open to talks. ${rival?.name ?? "A rival"} also circling.`,
     expiresAtWeek: expires,
     payload: target ? { targetId: target.id, targetName: target.name, price: target.valuation } : undefined,
   };
@@ -129,15 +160,28 @@ export function generateWeeklyEvents(run: GameRun): GameEvent[] {
   return buckets.map((bucket) => ({ id: uid(), resolved: false, ...eventForBucket(bucket, run) }));
 }
 
+export function processExpiredEvents(run: GameRun): GameRun {
+  let reputation = run.reputation;
+  const events = run.events.map((e) => {
+    if (e.resolved || run.week + 1 <= e.expiresAtWeek) return e;
+    if (e.bucket === "opportunity" || e.bucket === "uncertainty") {
+      reputation = Math.max(0, reputation - 5);
+      return { ...e, resolved: true };
+    }
+    return e;
+  });
+  return { ...run, events, reputation };
+}
+
 export function tickCompany(run: GameRun): Partial<GameRun> {
   const macro = createMacro(run.regime, run.week + 1);
   let { cash, burn, revenue, morale, productScore, marketShare, valuation, reputation } = run;
 
-  revenue *= 1 + (productScore / 500) + macro.gdpGrowth * 0.02;
+  revenue *= 1 + productScore / 500 + macro.gdpGrowth * 0.02;
   burn *= 1 + macro.inflation * 0.3;
   cash += revenue - burn;
 
-  const unresolvedThreat = run.events.some((e) => e.bucket === "threat" && !e.resolved && e.week <= run.week);
+  const unresolvedThreat = run.events.some((e) => e.bucket === "threat" && !e.resolved && e.week <= run.week + 1);
   if (unresolvedThreat) burn *= 1.04;
 
   morale = Math.min(100, Math.max(20, morale + (revenue > burn ? 2 : -3)));
@@ -149,6 +193,7 @@ export function tickCompany(run: GameRun): Partial<GameRun> {
 
   const peakValuation = Math.max(run.peakValuation, valuation);
   const status = cash <= 0 ? "bankrupt" : run.status;
+  const sectorIndex = computeSectorIndex(run.regime, run.week + 1, run.industry);
 
   return {
     week: run.week + 1,
@@ -163,26 +208,74 @@ export function tickCompany(run: GameRun): Partial<GameRun> {
     macro,
     reputation,
     status,
+    sectorIndex,
+    operateUsedThisWeek: false,
   };
+}
+
+function buildCliffhanger(run: GameRun): string {
+  const rival = run.npcs.find((n) => n.role === "rival");
+  const pending = run.events.filter((e) => !e.resolved && (e.bucket === "opportunity" || e.bucket === "uncertainty"));
+  if (pending.length > 0) {
+    const e = pending[0];
+    return `${e.title} — decision needed before week ${e.expiresAtWeek}.`;
+  }
+  const target = run.targets[0];
+  if (target && rival) {
+    return `Rumor: ${rival.name} scouting ${target.name} for potential bid.`;
+  }
+  return `Markets watch ${run.companyName} as ${run.regime} conditions persist.`;
 }
 
 export function advanceWeek(run: GameRun): GameRun {
   if (run.status !== "active") return run;
 
-  const updates = tickCompany(run);
-  const newEvents = generateWeeklyEvents({ ...run, ...updates });
-  const news = newEvents.map((e) =>
-    generateNews(e, run.companyName, run.industry, updates.macro ?? run.macro),
+  const prevRevenue = run.revenue;
+  const prevValuation = run.valuation;
+
+  let working = processExpiredEvents(run);
+  const updates = tickCompany(working);
+  working = { ...working, ...updates };
+
+  const newEvents = generateWeeklyEvents(working);
+
+  // Apply one-time burn spike for new threat events
+  let burn = working.burn;
+  const eventsWithSpike = newEvents.map((e) => {
+    if (e.bucket === "threat" && !e.payload?.burnSpikeApplied) {
+      burn *= 1.08;
+      return { ...e, payload: { ...e.payload, burnSpikeApplied: true } };
+    }
+    return e;
+  });
+  working = { ...working, burn };
+
+  const news = eventsWithSpike.map((e) =>
+    generateNews(e, working.companyName, working.industry, working.macro, working),
   );
 
-  const needsPause = newEvents.some((e) => e.bucket === "opportunity" || e.bucket === "uncertainty");
+  const valuationHistory = [...working.valuationHistory, working.valuation].slice(-12);
+  const needsPause = eventsWithSpike.some((e) => e.bucket === "opportunity" || e.bucket === "uncertainty");
+
+  const eventsSummary = eventsWithSpike.map((e) => `${e.bucket}: ${e.title}`);
+  const weekRecap: WeekRecap = {
+    week: working.week,
+    prevRevenue,
+    prevValuation,
+    revenueDelta: working.revenue - prevRevenue,
+    valuationDelta: working.valuation - prevValuation,
+    eventsSummary,
+    resolutions: [],
+    cliffhanger: buildCliffhanger({ ...working, events: [...working.events, ...eventsWithSpike] }),
+  };
 
   return {
-    ...run,
-    ...updates,
-    status: needsPause ? "paused" : (updates.status ?? run.status),
-    events: [...run.events, ...newEvents].slice(-20),
-    news: [...news, ...run.news].slice(0, 30),
+    ...working,
+    status: needsPause ? "paused" : (working.status ?? run.status),
+    events: [...working.events, ...eventsWithSpike].slice(-24),
+    news: [...news, ...working.news].slice(0, 30),
+    valuationHistory,
+    weekRecap,
   };
 }
 
@@ -197,6 +290,35 @@ export function computeScore(run: GameRun): number {
 }
 
 export function acceptFunding(run: GameRun, event: GameEvent): GameRun {
+  const rolled = rollResolution(run, "term_sheet", event.id, event);
+  const vc = run.npcs.find((n) => n.role === "vc");
+
+  if (!rolled.success) {
+    return {
+      ...run,
+      status: "active",
+      reputation: Math.max(0, run.reputation - 8),
+      npcs: run.npcs.map((n) => (n.role === "vc" ? { ...n, trust: Math.max(0, n.trust - 15) } : n)),
+      events: run.events.map((e) =>
+        e.id === event.id ? { ...e, resolved: true, resolution: rolled.resolution } : e,
+      ),
+      weekRecap: run.weekRecap
+        ? {
+            ...run.weekRecap,
+            resolutions: [
+              ...run.weekRecap.resolutions,
+              {
+                title: `${vc?.name ?? "VC"} passed — deal collapsed`,
+                success: false,
+                roll: rolled.roll,
+                threshold: rolled.threshold,
+              },
+            ],
+          }
+        : null,
+    };
+  }
+
   const amount = event.payload?.amount ?? 0;
   const preMoney = event.payload?.preMoney ?? run.valuation;
   const dilution = amount / (preMoney + amount);
@@ -211,11 +333,85 @@ export function acceptFunding(run: GameRun, event: GameEvent): GameRun {
     valuation: preMoney + amount,
     stage: nextStage(run.stage),
     reputation: Math.min(100, run.reputation + 5),
+    npcs: run.npcs.map((n) => (n.role === "vc" ? { ...n, trust: Math.min(100, n.trust + 10) } : n)),
     rounds: [
       ...run.rounds,
       { type: event.payload?.roundType ?? "seed", amount, preMoney, week: run.week },
     ],
-    events: run.events.map((e) => (e.id === event.id ? { ...e, resolved: true } : e)),
+    events: run.events.map((e) =>
+      e.id === event.id ? { ...e, resolved: true, resolution: rolled.resolution } : e,
+    ),
+    weekRecap: run.weekRecap
+      ? {
+          ...run.weekRecap,
+          resolutions: [
+            ...run.weekRecap.resolutions,
+            {
+              title: `${vc?.name ?? "VC"} term sheet closed`,
+              success: true,
+              roll: rolled.roll,
+              threshold: rolled.threshold,
+            },
+          ],
+        }
+      : null,
+  };
+}
+
+export function resolveReward(run: GameRun, event: GameEvent): GameRun {
+  const rolled = rollResolution(run, "customer_win", event.id, event);
+
+  return {
+    ...run,
+    status: "active",
+    revenue: rolled.success ? run.revenue * 1.15 : run.revenue,
+    reputation: rolled.success ? Math.min(100, run.reputation + 3) : run.reputation,
+    events: run.events.map((e) =>
+      e.id === event.id ? { ...e, resolved: true, resolution: rolled.resolution } : e,
+    ),
+    weekRecap: run.weekRecap
+      ? {
+          ...run.weekRecap,
+          resolutions: [
+            ...run.weekRecap.resolutions,
+            {
+              title: rolled.success ? "Enterprise deal closed" : "Customer win slipped",
+              success: rolled.success,
+              roll: rolled.roll,
+              threshold: rolled.threshold,
+            },
+          ],
+        }
+      : null,
+  };
+}
+
+export function resolveThreat(run: GameRun, event: GameEvent): GameRun {
+  const rolled = rollResolution(run, "threat_mitigate", event.id, event);
+
+  return {
+    ...run,
+    status: "active",
+    reputation: rolled.success
+      ? Math.min(100, run.reputation + 2)
+      : Math.max(0, run.reputation - 3),
+    events: run.events.map((e) =>
+      e.id === event.id ? { ...e, resolved: true, resolution: rolled.resolution } : e,
+    ),
+    weekRecap: run.weekRecap
+      ? {
+          ...run.weekRecap,
+          resolutions: [
+            ...run.weekRecap.resolutions,
+            {
+              title: rolled.success ? "Burn spike mitigated" : "Threat persists",
+              success: rolled.success,
+              roll: rolled.roll,
+              threshold: rolled.threshold,
+            },
+          ],
+        }
+      : null,
   };
 }
 
@@ -223,7 +419,36 @@ export function acquireTarget(run: GameRun, targetId: string): GameRun {
   const target = run.targets.find((t) => t.id === targetId);
   if (!target || run.cash < target.valuation * 0.3) return run;
 
+  const rolled = rollResolution(run, "ma_close", targetId, undefined, target);
   const price = target.valuation * 0.8;
+
+  if (!rolled.success) {
+    const breakupFee = price * 0.05;
+    return {
+      ...run,
+      status: "active",
+      cash: run.cash - breakupFee,
+      reputation: Math.max(0, run.reputation - 5),
+      events: run.events.map((e) =>
+        e.payload?.targetId === targetId ? { ...e, resolved: true, resolution: rolled.resolution } : e,
+      ),
+      weekRecap: run.weekRecap
+        ? {
+            ...run.weekRecap,
+            resolutions: [
+              ...run.weekRecap.resolutions,
+              {
+                title: `${target.name} deal fell through`,
+                success: false,
+                roll: rolled.roll,
+                threshold: rolled.threshold,
+              },
+            ],
+          }
+        : null,
+    };
+  }
+
   return {
     ...run,
     status: "active",
@@ -236,7 +461,32 @@ export function acquireTarget(run: GameRun, targetId: string): GameRun {
     valuation: run.valuation + target.synergy * 50_000,
     targets: run.targets.filter((t) => t.id !== targetId),
     events: run.events.map((e) =>
-      e.payload?.targetId === targetId ? { ...e, resolved: true } : e,
+      e.payload?.targetId === targetId ? { ...e, resolved: true, resolution: rolled.resolution } : e,
     ),
+    weekRecap: run.weekRecap
+      ? {
+          ...run.weekRecap,
+          resolutions: [
+            ...run.weekRecap.resolutions,
+            {
+              title: `Acquired ${target.name}`,
+              success: true,
+              roll: rolled.roll,
+              threshold: rolled.threshold,
+            },
+          ],
+        }
+      : null,
+  };
+}
+
+export function scoutTarget(run: GameRun, targetId: string): GameRun {
+  const target = run.targets.find((t) => t.id === targetId);
+  if (!target || run.cash < 25_000 || run.scoutedTargets.includes(targetId)) return run;
+
+  return {
+    ...run,
+    cash: run.cash - 25_000,
+    scoutedTargets: [...run.scoutedTargets, targetId],
   };
 }

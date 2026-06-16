@@ -1,13 +1,29 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0b1120;
-  --foreground: #f4f4f5;
+  --background: #0a0e17;
+  --foreground: #f1f5f9;
+  --panel: #1a2332;
+  --panel-border: #2a3548;
+  --accent: #00d4aa;
+  --positive: #00d4aa;
+  --negative: #ff4d6a;
+  --caution: #f4a623;
+  --muted: #64748b;
+  --text-dim: #94a3b8;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-panel: var(--panel);
+  --color-panel-border: var(--panel-border);
+  --color-accent: var(--accent);
+  --color-positive: var(--positive);
+  --color-negative: var(--negative);
+  --color-caution: var(--caution);
+  --color-text-dim: var(--text-dim);
+  --color-muted: var(--muted);
   --font-sans: var(--font-dm-sans);
   --font-mono: var(--font-jetbrains);
 }
@@ -15,4 +31,35 @@
 body {
   background: var(--background);
   color: var(--foreground);
+}
+
+@keyframes ticker-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.ticker-scroll {
+  animation: ticker-scroll 40s linear infinite;
+}
+
+.ticker-scroll:hover {
+  animation-play-state: paused;
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.pulse-danger {
+  animation: pulse-glow 1.5s ease-in-out infinite;
 }
