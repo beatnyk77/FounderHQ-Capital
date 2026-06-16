@@ -2,8 +2,13 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { WEEK_MS } from "./constants";
+import { PULSE_MS, WEEK_MS } from "./constants";
+import {
+  startFundingCounter,
+  submitFundingCounter,
+} from "./fundingTheater";
 import { investigateArticle } from "./intel";
+import { accelerateClose, walkFromTarget } from "./rivalEngine";
 import { recordReputationSwing } from "./reputationLedger";
 import {
   acceptFunding,
@@ -17,21 +22,31 @@ import {
 } from "./simulation";
 import { freezeTickTimer, resolveTickSchedule } from "./ticker";
 import type { GameRun, Industry, LeaderboardEntry, MacroRegime } from "./types";
+import { worldPulse } from "./worldPulse";
 
 interface GameStore {
   run: GameRun | null;
   leaderboard: LeaderboardEntry[];
   tickId: ReturnType<typeof setTimeout> | null;
+  pulseId: ReturnType<typeof setInterval> | null;
   startRun: (name: string, industry: Industry, regime: MacroRegime) => void;
   startTicker: () => void;
   stopTicker: (saveRemaining?: boolean) => void;
+  startPulse: () => void;
+  stopPulse: () => void;
   tick: () => void;
+  pulse: () => void;
   resume: () => void;
   clearWeekRecap: () => void;
   operate: (action: "hire" | "rd" | "sales" | "cut") => void;
   acceptTermSheet: (eventId: string) => void;
+  startTermSheetCounter: (eventId: string) => void;
+  submitTermSheetCounter: (eventId: string, preMoney: number) => void;
   declineEvent: (eventId: string) => void;
   buyTarget: (targetId: string) => void;
+  outbidTarget: (targetId: string) => void;
+  walkFromTarget: (targetId: string) => void;
+  accelerateTarget: (targetId: string) => void;
   scoutTarget: (targetId: string) => void;
   investigateIntel: (articleId: string) => void;
   exitRun: () => void;
@@ -44,11 +59,14 @@ export const useGameStore = create<GameStore>()(
       run: null,
       leaderboard: [],
       tickId: null,
+      pulseId: null,
 
       startRun: (name, industry, regime) => {
         get().stopTicker();
+        get().stopPulse();
         set({ run: createRun(name, industry, regime) });
         get().startTicker();
+        get().startPulse();
       },
 
       startTicker: () => {
@@ -94,6 +112,25 @@ export const useGameStore = create<GameStore>()(
         set({ tickId: null });
       },
 
+      startPulse: () => {
+        const { pulseId } = get();
+        if (pulseId) clearInterval(pulseId);
+        const id = setInterval(() => get().pulse(), PULSE_MS);
+        set({ pulseId: id });
+      },
+
+      stopPulse: () => {
+        const { pulseId } = get();
+        if (pulseId) clearInterval(pulseId);
+        set({ pulseId: null });
+      },
+
+      pulse: () => {
+        const { run } = get();
+        if (!run || run.status !== "active" || run.weekRecap) return;
+        set({ run: worldPulse(run) });
+      },
+
       tick: () => {
         const { run } = get();
         if (!run || run.status !== "active") return;
@@ -112,13 +149,17 @@ export const useGameStore = create<GameStore>()(
         if (!run) return;
         set({ run: { ...run, status: "active", weekRecap: null } });
         get().startTicker();
+        get().startPulse();
       },
 
       clearWeekRecap: () => {
         const { run } = get();
         if (!run) return;
         set({ run: { ...run, weekRecap: null } });
-        if (run.status === "active") get().startTicker();
+        if (run.status === "active") {
+          get().startTicker();
+          get().startPulse();
+        }
       },
 
       operate: (action) => {
@@ -167,6 +208,18 @@ export const useGameStore = create<GameStore>()(
         set({ run: acceptFunding(run, event) });
       },
 
+      startTermSheetCounter: (eventId) => {
+        const { run } = get();
+        if (!run) return;
+        set({ run: startFundingCounter(run, eventId) });
+      },
+
+      submitTermSheetCounter: (eventId, preMoney) => {
+        const { run } = get();
+        if (!run) return;
+        set({ run: submitFundingCounter(run, eventId, preMoney) });
+      },
+
       declineEvent: (eventId) => {
         const { run } = get();
         if (!run) return;
@@ -197,6 +250,24 @@ export const useGameStore = create<GameStore>()(
         set({ run: acquireTarget(run, targetId) });
       },
 
+      outbidTarget: (targetId) => {
+        const { run } = get();
+        if (!run) return;
+        set({ run: acquireTarget(run, targetId, { outbid: true }) });
+      },
+
+      walkFromTarget: (targetId) => {
+        const { run } = get();
+        if (!run) return;
+        set({ run: walkFromTarget(run, targetId) });
+      },
+
+      accelerateTarget: (targetId) => {
+        const { run } = get();
+        if (!run) return;
+        set({ run: accelerateClose(run, targetId) });
+      },
+
       scoutTarget: (targetId) => {
         const { run } = get();
         if (!run) return;
@@ -213,6 +284,7 @@ export const useGameStore = create<GameStore>()(
         const { run, leaderboard } = get();
         if (!run) return;
         get().stopTicker();
+        get().stopPulse();
         const score = computeScore({ ...run, status: "exited" });
         const entry: LeaderboardEntry = {
           companyName: run.companyName,
@@ -229,6 +301,7 @@ export const useGameStore = create<GameStore>()(
 
       abandonRun: () => {
         get().stopTicker();
+        get().stopPulse();
         set({ run: null });
       },
     }),
@@ -256,9 +329,20 @@ export const useGameStore = create<GameStore>()(
             publicNarrative: state.run.publicNarrative ?? "",
           };
         }
+        if (state.run && version < 5) {
+          state.run = {
+            ...state.run,
+            pulseCount: state.run.pulseCount ?? 0,
+            targets: (state.run.targets ?? []).map((t) => ({
+              ...t,
+              heatLevel: t.heatLevel ?? 0,
+              rivalInterest: t.rivalInterest ?? 0,
+            })),
+          };
+        }
         return state as { run: GameRun | null; leaderboard: LeaderboardEntry[] };
       },
-      version: 4,
+      version: 5,
     },
   ),
 );

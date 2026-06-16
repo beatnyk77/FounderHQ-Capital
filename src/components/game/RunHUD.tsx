@@ -26,9 +26,16 @@ export function RunHUD() {
   const clearWeekRecap = useGameStore((s) => s.clearWeekRecap);
   const operate = useGameStore((s) => s.operate);
   const acceptTermSheet = useGameStore((s) => s.acceptTermSheet);
+  const startTermSheetCounter = useGameStore((s) => s.startTermSheetCounter);
+  const submitTermSheetCounter = useGameStore((s) => s.submitTermSheetCounter);
   const declineEvent = useGameStore((s) => s.declineEvent);
   const buyTarget = useGameStore((s) => s.buyTarget);
+  const outbidTarget = useGameStore((s) => s.outbidTarget);
+  const walkFromTarget = useGameStore((s) => s.walkFromTarget);
+  const accelerateTarget = useGameStore((s) => s.accelerateTarget);
   const scoutTargetAction = useGameStore((s) => s.scoutTarget);
+  const startPulse = useGameStore((s) => s.startPulse);
+  const stopPulse = useGameStore((s) => s.stopPulse);
   const investigateIntel = useGameStore((s) => s.investigateIntel);
   const exitRun = useGameStore((s) => s.exitRun);
   const abandonRun = useGameStore((s) => s.abandonRun);
@@ -43,11 +50,16 @@ export function RunHUD() {
   useEffect(() => {
     if (run?.status === "active" && !run.weekRecap) {
       startTicker();
+      startPulse();
     } else if (run) {
       useGameStore.getState().stopTicker(true);
+      stopPulse();
     }
-    return () => useGameStore.getState().stopTicker();
-  }, [run?.id, run?.status, run?.weekRecap, startTicker]);
+    return () => {
+      useGameStore.getState().stopTicker();
+      stopPulse();
+    };
+  }, [run?.id, run?.status, run?.weekRecap, startTicker, startPulse, stopPulse]);
 
   if (!run) return null;
 
@@ -184,6 +196,9 @@ export function RunHUD() {
                       run={run}
                       onAcquire={() => buyTarget(t.id)}
                       onScout={() => scoutTargetAction(t.id)}
+                      onOutbid={t.rivalBid ? () => outbidTarget(t.id) : undefined}
+                      onWalk={t.rivalBid ? () => walkFromTarget(t.id) : undefined}
+                      onAccelerate={() => accelerateTarget(t.id)}
                     />
                   ))}
                 </div>
@@ -234,6 +249,14 @@ export function RunHUD() {
                       event={e}
                       run={run}
                       onAccept={e.bucket === "opportunity" ? () => acceptTermSheet(e.id) : undefined}
+                      onStartCounter={
+                        e.bucket === "opportunity" ? () => startTermSheetCounter(e.id) : undefined
+                      }
+                      onSubmitCounter={
+                        e.bucket === "opportunity"
+                          ? (preMoney) => submitTermSheetCounter(e.id, preMoney)
+                          : undefined
+                      }
                       onDecline={() => declineEvent(e.id)}
                       onAcquire={
                         e.bucket === "uncertainty" && e.payload?.targetId

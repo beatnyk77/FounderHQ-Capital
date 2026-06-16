@@ -1,6 +1,8 @@
 import { MACRO_BASE } from "./constants";
+import { getEffectivePreMoney, initFundingStep } from "./fundingTheater";
 import { seedNPCs } from "./npcs";
 import { generateNews } from "./news";
+import { bumpHeatOnScout, defaultTargetFields } from "./rivalEngine";
 import { buildPublicNarrative, recordReputationSwing } from "./reputationLedger";
 import { createSeed, seededRandom } from "./rng";
 import { rollResolution } from "./resolution";
@@ -47,14 +49,16 @@ export function computeSectorIndex(regime: MacroRegime, week: number, industry: 
 }
 
 export function createTargets(industry: Industry, seed: number): AcquisitionTarget[] {
-  return TARGET_NAMES.slice(0, 4).map((name, i) => ({
-    id: `target-${i}`,
-    name,
-    industry,
-    valuation: 2_000_000 + seededRandom(seed, i, `target-val-${name}`) * 8_000_000,
-    healthScore: 40 + seededRandom(seed, i, `target-health-${name}`) * 50,
-    synergy: 10 + seededRandom(seed, i, `target-syn-${name}`) * 30,
-  }));
+  return TARGET_NAMES.slice(0, 4).map((name, i) =>
+    defaultTargetFields({
+      id: `target-${i}`,
+      name,
+      industry,
+      valuation: 2_000_000 + seededRandom(seed, i, `target-val-${name}`) * 8_000_000,
+      healthScore: 40 + seededRandom(seed, i, `target-health-${name}`) * 50,
+      synergy: 10 + seededRandom(seed, i, `target-syn-${name}`) * 30,
+    }),
+  );
 }
 
 export function createRun(companyName: string, industry: Industry, regime: MacroRegime): GameRun {
@@ -101,6 +105,7 @@ export function createRun(companyName: string, industry: Industry, regime: Macro
     reputationSwings: [],
     verifiedIntel: [],
     publicNarrative: "",
+    pulseCount: 0,
   };
 }
 
@@ -166,7 +171,10 @@ function eventForBucket(
 
 export function generateWeeklyEvents(run: GameRun): GameEvent[] {
   const buckets: GameEvent["bucket"][] = ["opportunity", "threat", "reward", "uncertainty"];
-  return buckets.map((bucket) => ({ id: uid(), resolved: false, ...eventForBucket(bucket, run) }));
+  return buckets.map((bucket) => {
+    const event = { id: uid(), resolved: false, ...eventForBucket(bucket, run) };
+    return bucket === "opportunity" ? initFundingStep(event) : event;
+  });
 }
 
 export function processExpiredEvents(run: GameRun): GameRun {
@@ -331,7 +339,7 @@ export function acceptFunding(run: GameRun, event: GameEvent): GameRun {
   }
 
   const amount = event.payload?.amount ?? 0;
-  const preMoney = event.payload?.preMoney ?? run.valuation;
+  const preMoney = getEffectivePreMoney(event) || run.valuation;
   const dilution = amount / (preMoney + amount);
   const newOwnership = run.founderOwnership * (1 - dilution);
 
@@ -430,12 +438,20 @@ export function resolveThreat(run: GameRun, event: GameEvent): GameRun {
   };
 }
 
-export function acquireTarget(run: GameRun, targetId: string): GameRun {
+export function acquireTarget(
+  run: GameRun,
+  targetId: string,
+  options?: { outbid?: boolean; accelerated?: boolean },
+): GameRun {
   const target = run.targets.find((t) => t.id === targetId);
   if (!target || run.cash < target.valuation * 0.3) return run;
 
-  const rolled = rollResolution(run, "ma_close", targetId, undefined, target);
-  const price = target.valuation * 0.8;
+  const rolled = rollResolution(run, "ma_close", targetId, undefined, target, {
+    outbid: options?.outbid,
+  });
+  const price = options?.outbid
+    ? (target.rivalBid ?? target.valuation * 0.85)
+    : target.valuation * 0.8;
 
   if (!rolled.success) {
     const breakupFee = price * 0.05;
@@ -503,5 +519,8 @@ export function scoutTarget(run: GameRun, targetId: string): GameRun {
     ...run,
     cash: run.cash - 25_000,
     scoutedTargets: [...run.scoutedTargets, targetId],
+    targets: run.targets.map((t) =>
+      t.id === targetId ? bumpHeatOnScout(t, run.week) : t,
+    ),
   };
 }

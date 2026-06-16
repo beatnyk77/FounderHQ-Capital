@@ -7,6 +7,8 @@ export type ActionType = "term_sheet" | "ma_close" | "customer_win" | "threat_mi
 export type IntelTruthState = "unknown" | "confirmed" | "false_flag" | "conflicting";
 export type IntelType = "rumor" | "regulatory" | "competitive" | "market";
 export type VerifiedOutcome = "confirmed" | "conflicting" | "false_flag";
+export type FundingStep = "review" | "counter" | "resolve";
+export type VcCounterResponse = "pending" | "accepted_counter" | "rejected_counter";
 
 export interface MacroState {
   interestRate: number;
@@ -55,10 +57,15 @@ export interface GameEvent {
     roundType?: string;
     amount?: number;
     preMoney?: number;
+    originalPreMoney?: number;
     targetId?: string;
     targetName?: string;
     price?: number;
     burnSpikeApplied?: boolean;
+    fundingStep?: FundingStep;
+    counterPreMoney?: number;
+    boardSeat?: boolean;
+    vcResponse?: VcCounterResponse;
   };
 }
 
@@ -107,6 +114,10 @@ export interface AcquisitionTarget {
   valuation: number;
   healthScore: number;
   synergy: number;
+  heatLevel: number;
+  rivalInterest: number;
+  rivalBid?: number;
+  expiresAtWeek?: number;
 }
 
 export interface FundingRound {
@@ -168,6 +179,7 @@ export interface GameRun {
   reputationSwings: ReputationSwing[];
   verifiedIntel: string[];
   publicNarrative: string;
+  pulseCount: number;
 }
 
 export interface LeaderboardEntry {

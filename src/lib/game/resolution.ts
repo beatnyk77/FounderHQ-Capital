@@ -1,4 +1,5 @@
 import { getIntelModifiers } from "./intel";
+import { heatOddsModifier } from "./rivalEngine";
 import { reputationTierOddsModifier } from "./reputationLedger";
 import type { AcquisitionTarget, ActionType, GameEvent, GameRun, OddsBreakdown } from "./types";
 import { seededRandom } from "./rng";
@@ -19,6 +20,7 @@ export function computeOdds(
   run: GameRun,
   event?: GameEvent,
   target?: AcquisitionTarget,
+  context?: { outbid?: boolean },
 ): OddsBreakdown {
   const base = BASE_ODDS[action];
   const modifiers: OddsBreakdown["modifiers"] = [];
@@ -38,6 +40,17 @@ export function computeOdds(
     if (target.healthScore < 50) modifiers.push({ label: "Poor health", value: -0.15 });
     if (run.scoutedTargets.includes(target.id)) modifiers.push({ label: "Scouted", value: 0.08 });
     if (run.regime === "bear") modifiers.push({ label: "Bear market", value: -0.08 });
+    if (context?.outbid) {
+      modifiers.push({ label: "Outbid rival", value: 0.1 });
+    } else {
+      const heatMod = heatOddsModifier(target);
+      if (heatMod !== 0) {
+        modifiers.push({
+          label: target.rivalBid ? "Rival bid" : "Deal heat",
+          value: heatMod,
+        });
+      }
+    }
   }
 
   if (action === "customer_win") {
@@ -73,8 +86,9 @@ export function rollResolution(
   salt: string,
   event?: GameEvent,
   target?: AcquisitionTarget,
+  context?: { outbid?: boolean },
 ) {
-  const odds = computeOdds(action, run, event, target);
+  const odds = computeOdds(action, run, event, target, context);
   const roll = seededRandom(run.seed, run.week, salt);
   const success = roll < odds.final;
   return {

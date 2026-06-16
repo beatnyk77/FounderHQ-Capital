@@ -51,6 +51,7 @@ function makeRun(overrides: Partial<GameRun> = {}): GameRun {
     reputationSwings: [],
     verifiedIntel: [],
     publicNarrative: "",
+    pulseCount: 0,
     ...overrides,
   };
 }
@@ -82,6 +83,8 @@ describe("buildMaPreviews", () => {
       valuation: 3_000_000,
       healthScore: 70,
       synergy: 25,
+      heatLevel: 0,
+      rivalInterest: 0,
     };
     const previews = buildMaPreviews(makeRun(), target);
     expect(previews[0].action).toBe("Acquire");

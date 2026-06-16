@@ -22,7 +22,15 @@ export function WeekCountdown({ run }: { run: GameRun }) {
         isLive ? "border-accent/40 bg-accent/5" : "border-panel-border bg-panel/60"
       }`}
     >
-      <p className="text-[10px] uppercase tracking-widest text-text-dim">Next Week</p>
+      <div className="flex items-center gap-2">
+        <p className="text-[10px] uppercase tracking-widest text-text-dim">Next Week</p>
+        {isLive && (
+          <span className="flex items-center gap-1 text-[9px] text-positive">
+            <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-positive" />
+            PULSE
+          </span>
+        )}
+      </div>
       <p className={`text-lg font-bold ${isLive ? "text-accent" : "text-text-dim"}`}>{label}</p>
       {isLive && msLeft != null && msLeft < 30_000 && (
         <p className="text-[10px] text-caution">Week advancing soon</p>

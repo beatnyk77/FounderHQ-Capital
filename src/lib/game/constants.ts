@@ -1,6 +1,7 @@
 import type { Industry, MacroRegime } from "./types";
 
 export const WEEK_MS = 150_000; // 2.5 min per game week
+export const PULSE_MS = 15_000; // ambient world tick every 15s
 
 export const INDUSTRIES: { id: Industry; label: string }[] = [
   { id: "fintech", label: "Fintech" },

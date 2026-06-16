@@ -51,6 +51,7 @@ function makeRun(overrides: Partial<GameRun> = {}): GameRun {
     reputationSwings: [],
     verifiedIntel: [],
     publicNarrative: "",
+    pulseCount: 0,
     ...overrides,
   };
 }
