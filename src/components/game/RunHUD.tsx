@@ -4,9 +4,13 @@ import { useCallback, useEffect, useRef } from "react";
 import { useGameTabTitle } from "@/hooks/useGameTabTitle";
 import { getReputationTier } from "@/lib/design/tokens";
 import { fmtMoney } from "@/lib/format";
+import { getResourceSnapshot } from "@/lib/game/specialists";
 import { OPERATE_COSTS } from "@/lib/game/types";
 import { useGameStore } from "@/lib/game/store";
 import { ArchetypeBadge } from "./ArchetypeBadge";
+import { SpecialistRoster } from "./SpecialistRoster";
+import { VictoryModal } from "./VictoryModal";
+import { VictoryTracksPanel } from "./VictoryTracksPanel";
 import { DealRoomModal } from "./DealRoomModal";
 import { DecisionAlertBanner } from "./DecisionAlertBanner";
 import { DealCard } from "./DealCard";
@@ -47,7 +51,8 @@ export function RunHUD() {
   const dealRoomClose = useGameStore((s) => s.dealRoomClose);
   const dealRoomIntegrate = useGameStore((s) => s.dealRoomIntegrate);
   const dismissDealRoom = useGameStore((s) => s.dismissDealRoom);
-  const exitRun = useGameStore((s) => s.exitRun);
+  const foldRun = useGameStore((s) => s.foldRun);
+  const claimVictory = useGameStore((s) => s.claimVictory);
   const abandonRun = useGameStore((s) => s.abandonRun);
   const decisionQueueRef = useRef<HTMLElement>(null);
 
@@ -76,10 +81,12 @@ export function RunHUD() {
   const pending = run.events.filter((e) => !e.resolved && e.week <= run.week);
   const repTier = getReputationTier(run.reputation);
   const stageLabel = run.stage.replace("_", " ").toUpperCase();
+  const resources = getResourceSnapshot(run);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <WeekRecapModal recap={run.weekRecap} onContinue={clearWeekRecap} />
+      <VictoryModal run={run} onClaim={claimVictory} />
 
       {run.dealRoom && (
         <DealRoomModal
@@ -104,7 +111,13 @@ export function RunHUD() {
             </div>
             <p className="mt-0.5 font-mono text-xs text-text-dim">
               Week {run.week} · {run.industry} · {run.regime} market ·{" "}
-              {run.status === "paused" ? "⏸ PAUSED" : run.status === "bankrupt" ? "✗ BANKRUPT" : "● LIVE"}
+              {run.status === "paused"
+                ? "⏸ PAUSED"
+                : run.status === "bankrupt"
+                  ? "✗ BANKRUPT"
+                  : run.status === "victorious"
+                    ? "★ VICTORY"
+                    : "● LIVE"}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -117,12 +130,14 @@ export function RunHUD() {
                 Resume Clock
               </button>
             )}
-            <button
-              onClick={exitRun}
-              className="rounded-lg border border-caution/50 px-3 py-1.5 text-sm text-caution hover:bg-caution/10"
-            >
-              Exit
-            </button>
+            {run.status !== "victorious" && (
+              <button
+                onClick={foldRun}
+                className="rounded-lg border border-caution/50 px-3 py-1.5 text-sm text-caution hover:bg-caution/10"
+              >
+                Fold
+              </button>
+            )}
             <button
               onClick={abandonRun}
               className="rounded-lg border border-panel-border px-3 py-1.5 text-sm text-text-dim hover:bg-panel"
@@ -160,26 +175,28 @@ export function RunHUD() {
             <ValuationChart history={run.valuationHistory} current={run.valuation} />
 
             <div className="grid grid-cols-2 gap-2">
-              <StatBar label="Revenue/wk" value={fmtMoney(run.revenue)} tone="good" />
-              <StatBar label="Ownership" value={`${run.founderOwnership.toFixed(0)}%`} />
-              <StatBar label="Reputation" value={`${run.reputation} ★ ${repTier}`} />
-              <StatBar label="Employees" value={`${run.employees}`} />
+              <StatBar label="Cash" value={resources.cash} tone="good" />
+              <StatBar label="Trust" value={`${resources.trust} ★ ${repTier}`} />
+              <StatBar label="Influence" value={resources.influence} tone="good" />
+              <StatBar label="Talent" value={resources.talent} />
             </div>
 
             <div className="rounded-lg border border-panel-border bg-panel/60 p-3">
               <p className="mb-1 text-[10px] text-text-dim">
-                Morale {run.morale.toFixed(0)} · Product {run.productScore.toFixed(0)} · Share {run.marketShare.toFixed(1)}%
+                Morale {run.morale.toFixed(0)} · Talent depth {run.productScore.toFixed(0)} · Revenue {fmtMoney(run.revenue)}/wk
               </p>
               <div className="h-1.5 overflow-hidden rounded-full bg-background">
                 <div className="h-full bg-accent" style={{ width: `${run.productScore}%` }} />
               </div>
             </div>
 
+            <SpecialistRoster />
+            <VictoryTracksPanel run={run} />
             <ArchetypeBadge run={run} />
             <PortfolioStrip run={run} />
 
             <section>
-              <h2 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-text-dim">Operate</h2>
+              <h2 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-text-dim">Deploy Operators</h2>
               <div className="grid grid-cols-2 gap-2">
                 {(["hire", "rd", "sales", "cut"] as const).map((a) => {
                   const cost = OPERATE_COSTS[a];
@@ -206,13 +223,13 @@ export function RunHUD() {
                 })}
               </div>
               {run.operateUsedThisWeek && (
-                <p className="mt-1 text-[10px] text-text-dim">One operate action per week — used this week.</p>
+                <p className="mt-1 text-[10px] text-text-dim">One operator deploy per week — used this week.</p>
               )}
             </section>
 
             {run.targets.length > 0 && run.stage !== "pre_seed" && (
               <section>
-                <h2 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-text-dim">Deal Flow</h2>
+                <h2 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-text-dim">Deploy Lawyers</h2>
                 <div className="space-y-2">
                   {run.targets.map((t) => (
                     <DealCard

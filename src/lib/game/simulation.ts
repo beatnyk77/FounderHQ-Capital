@@ -1,4 +1,5 @@
 import { archetypeScoreMultiplier, createInitialArchetype, recordArchetypeSignal } from "./archetype";
+import { applyVictoryIfEligible } from "./victoryTracks";
 import { MACRO_BASE } from "./constants";
 import { maybeSpawnChain } from "./eventChains";
 import { getEffectivePreMoney, initFundingStep } from "./fundingTheater";
@@ -297,7 +298,7 @@ export function advanceWeek(run: GameRun): GameRun {
 
   const finalized = finalizeRun(working);
 
-  return {
+  const advanced: GameRun = {
     ...finalized,
     status: needsPause ? "paused" : (finalized.status ?? run.status),
     events: [...working.events, ...eventsWithSpike].slice(-24),
@@ -305,6 +306,8 @@ export function advanceWeek(run: GameRun): GameRun {
     valuationHistory,
     weekRecap,
   };
+
+  return applyVictoryIfEligible(advanced);
 }
 
 export function computeScore(run: GameRun): number {

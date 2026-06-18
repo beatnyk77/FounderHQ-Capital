@@ -34,7 +34,7 @@ export function DealRoomModal({
       <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-violet-500/40 bg-panel p-5 shadow-2xl">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-[10px] uppercase tracking-widest text-violet-300">M&A Deal Room</p>
+            <p className="text-[10px] uppercase tracking-widest text-violet-300">Lawyers — Legal Close</p>
             <h2 className="text-lg font-bold text-foreground">{target.name}</h2>
             <p className="font-mono text-xs text-text-dim">
               {fmtMoney(target.valuation)} · synergy +{target.synergy.toFixed(0)}
@@ -44,7 +44,7 @@ export function DealRoomModal({
             onClick={onDismiss}
             className="rounded border border-panel-border px-2 py-1 text-[10px] text-text-dim hover:bg-background"
           >
-            Exit
+            Walk
           </button>
         </div>
 
@@ -61,7 +61,7 @@ export function DealRoomModal({
 
         {room.phase === "screen" && (
           <div className="mt-4 space-y-3">
-            <p className="text-sm text-text-dim">Choose diligence depth. Deeper DD costs more but reveals risks and upside.</p>
+            <p className="text-sm text-text-dim">Lawyers screen the target. Deeper diligence costs more but reveals risks and upside.</p>
             <div className="grid gap-2">
               {(
                 [

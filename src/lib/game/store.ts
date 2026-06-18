@@ -31,6 +31,7 @@ import {
 } from "./simulation";
 import { freezeTickTimer, resolveTickSchedule } from "./ticker";
 import type { GameRun, Industry, LeaderboardEntry, MacroRegime } from "./types";
+import { applyVictoryIfEligible, getCompletedTrackIds } from "./victoryTracks";
 import { worldPulse } from "./worldPulse";
 
 interface GameStore {
@@ -64,8 +65,22 @@ interface GameStore {
   dealRoomClose: () => void;
   dealRoomIntegrate: (focus: "culture" | "product" | "sales") => void;
   dismissDealRoom: () => void;
-  exitRun: () => void;
+  foldRun: () => void;
+  claimVictory: () => void;
   abandonRun: () => void;
+}
+
+function commitRun(
+  set: (partial: Partial<GameStore> | ((state: GameStore) => Partial<GameStore>)) => void,
+  get: () => GameStore,
+  run: GameRun,
+) {
+  const next = applyVictoryIfEligible(run);
+  if (next.status === "victorious") {
+    get().stopTicker(true);
+    get().stopPulse();
+  }
+  set({ run: next });
 }
 
 export const useGameStore = create<GameStore>()(
@@ -150,13 +165,15 @@ export const useGameStore = create<GameStore>()(
         const { run } = get();
         if (!run || run.status !== "active") return;
         get().stopTicker();
-        set({
-          run: advanceWeek({
+        commitRun(
+          set,
+          get,
+          advanceWeek({
             ...run,
             nextTickAt: null,
             tickRemainingMs: null,
           }),
-        });
+        );
       },
 
       resume: () => {
@@ -217,7 +234,7 @@ export const useGameStore = create<GameStore>()(
         } else if (action === "sales") {
           updated = recordArchetypeSignal(updated, "visionary", 1);
         }
-        set({ run: updated });
+        commitRun(set, get, updated);
       },
 
       acceptTermSheet: (eventId) => {
@@ -225,7 +242,7 @@ export const useGameStore = create<GameStore>()(
         if (!run) return;
         const event = run.events.find((e) => e.id === eventId);
         if (!event) return;
-        set({ run: acceptFunding(run, event) });
+        commitRun(set, get, acceptFunding(run, event));
       },
 
       startTermSheetCounter: (eventId) => {
@@ -237,7 +254,7 @@ export const useGameStore = create<GameStore>()(
       submitTermSheetCounter: (eventId, preMoney) => {
         const { run } = get();
         if (!run) return;
-        set({ run: submitFundingCounter(run, eventId, preMoney) });
+        commitRun(set, get, submitFundingCounter(run, eventId, preMoney));
       },
 
       declineEvent: (eventId) => {
@@ -247,33 +264,31 @@ export const useGameStore = create<GameStore>()(
         if (!event) return;
 
         if (event.bucket === "reward") {
-          set({ run: resolveReward(run, event) });
+          commitRun(set, get, resolveReward(run, event));
           return;
         }
         if (event.bucket === "threat") {
-          set({ run: resolveThreat(run, event) });
+          commitRun(set, get, resolveThreat(run, event));
           return;
         }
 
-        set({
-          run: {
-            ...run,
-            status: "active",
-            events: run.events.map((e) => (e.id === eventId ? { ...e, resolved: true } : e)),
-          },
+        commitRun(set, get, {
+          ...run,
+          status: "active",
+          events: run.events.map((e) => (e.id === eventId ? { ...e, resolved: true } : e)),
         });
       },
 
       buyTarget: (targetId) => {
         const { run } = get();
         if (!run) return;
-        set({ run: acquireTarget(run, targetId) });
+        commitRun(set, get, acquireTarget(run, targetId));
       },
 
       outbidTarget: (targetId) => {
         const { run } = get();
         if (!run) return;
-        set({ run: acquireTarget(run, targetId, { outbid: true }) });
+        commitRun(set, get, acquireTarget(run, targetId, { outbid: true }));
       },
 
       walkFromTarget: (targetId) => {
@@ -297,7 +312,7 @@ export const useGameStore = create<GameStore>()(
       investigateIntel: (articleId) => {
         const { run } = get();
         if (!run) return;
-        set({ run: investigateArticle(run, articleId) });
+        commitRun(set, get, investigateArticle(run, articleId));
       },
 
       enterDealRoom: (targetId) => {
@@ -321,13 +336,13 @@ export const useGameStore = create<GameStore>()(
       dealRoomClose: () => {
         const { run } = get();
         if (!run) return;
-        set({ run: executeDealClose(run) });
+        commitRun(set, get, executeDealClose(run));
       },
 
       dealRoomIntegrate: (focus) => {
         const { run } = get();
         if (!run) return;
-        set({ run: applyIntegration(run, focus) });
+        commitRun(set, get, applyIntegration(run, focus));
       },
 
       dismissDealRoom: () => {
@@ -336,18 +351,38 @@ export const useGameStore = create<GameStore>()(
         set({ run: closeDealRoom(run) });
       },
 
-      exitRun: () => {
+      foldRun: () => {
         const { run, leaderboard } = get();
-        if (!run) return;
+        if (!run || run.status === "victorious") return;
         get().stopTicker();
         get().stopPulse();
         const score = computeScore({ ...run, status: "exited" });
         const entry: LeaderboardEntry = {
           companyName: run.companyName,
           score,
-          exitType: "strategic",
+          exitType: "fold",
           week: run.week,
           date: new Date().toISOString(),
+        };
+        set({
+          run: null,
+          leaderboard: [entry, ...leaderboard].slice(0, 20),
+        });
+      },
+
+      claimVictory: () => {
+        const { run, leaderboard } = get();
+        if (!run || run.status !== "victorious") return;
+        get().stopTicker();
+        get().stopPulse();
+        const score = computeScore({ ...run, status: "exited" });
+        const entry: LeaderboardEntry = {
+          companyName: run.companyName,
+          score,
+          exitType: "victory",
+          week: run.week,
+          date: new Date().toISOString(),
+          victoryTracks: getCompletedTrackIds(run),
         };
         set({
           run: null,
@@ -417,7 +452,7 @@ export const useGameStore = create<GameStore>()(
         }
         return state as { run: GameRun | null; leaderboard: LeaderboardEntry[] };
       },
-      version: 6,
+      version: 7,
     },
   ),
 );

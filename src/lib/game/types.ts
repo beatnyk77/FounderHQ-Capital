@@ -1,6 +1,6 @@
 export type Industry = "fintech" | "saas" | "healthtech" | "climate" | "ai" | "consumer";
 export type MacroRegime = "bull" | "neutral" | "bear";
-export type RunStatus = "active" | "paused" | "exited" | "bankrupt";
+export type RunStatus = "active" | "paused" | "exited" | "bankrupt" | "victorious";
 export type EventBucket = "opportunity" | "threat" | "reward" | "uncertainty";
 export type CompanyStage = "pre_seed" | "seed" | "series_a" | "series_b" | "growth";
 export type ActionType = "term_sheet" | "ma_close" | "customer_win" | "threat_mitigate";
@@ -244,11 +244,12 @@ export interface LeaderboardEntry {
   exitType?: string;
   week: number;
   date: string;
+  victoryTracks?: string[];
 }
 
 export const OPERATE_COSTS = {
-  hire: { cash: 80_000, label: "Hire", preview: "−$80K · +2 employees · +$12K burn · +3 product" },
-  rd: { cash: 50_000, label: "R&D", preview: "−$50K · +5 product · +$5K burn" },
-  sales: { cash: 30_000, label: "Sales", preview: "−$30K · +8% revenue · +0.5% share" },
-  cut: { cash: 0, label: "Cut", preview: "−10% burn · −8 morale · −2 rep" },
+  hire: { cash: 80_000, label: "Field Ops", preview: "−$80K · +2 talent · +$12K burn · +3 depth" },
+  rd: { cash: 50_000, label: "Build Capacity", preview: "−$50K · +5 talent depth · +$5K burn" },
+  sales: { cash: 30_000, label: "Growth Push", preview: "−$30K · +8% revenue · +0.5% influence · influencer push" },
+  cut: { cash: 0, label: "Restructure", preview: "−10% burn · −8 morale · −2 trust" },
 } as const;

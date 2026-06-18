@@ -88,11 +88,25 @@ export function EventCard({
   const weeksLeft = event.expiresAtWeek - run.week;
   const previews = previewsForEvent(run, event);
 
+  const specialistBadge =
+    event.bucket === "opportunity"
+      ? "Bankers deployed"
+      : event.bucket === "threat"
+        ? "Lobbyists"
+        : event.bucket === "uncertainty"
+          ? "Lawyers"
+          : null;
+
   return (
     <div className={`rounded-xl border p-4 ${bucketStyles[event.bucket]}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
           <p className="text-[10px] uppercase tracking-widest text-text-dim">{event.bucket}</p>
+          {specialistBadge && (
+            <span className="rounded bg-background px-1.5 py-0.5 font-mono text-[9px] text-accent">
+              {specialistBadge}
+            </span>
+          )}
           {event.parentEventId && (
             <span className="rounded bg-violet-500/20 px-1.5 py-0.5 font-mono text-[9px] text-violet-300">
               CHAIN
@@ -142,7 +156,7 @@ export function EventCard({
         )}
         {event.bucket === "threat" && onDecline && (
           <button onClick={onDecline} className="rounded-lg border border-negative/50 px-3 py-1.5 text-sm text-negative hover:bg-negative/10">
-            Mitigate
+            Lobbyist counter
           </button>
         )}
         {event.bucket === "reward" && onDecline && (

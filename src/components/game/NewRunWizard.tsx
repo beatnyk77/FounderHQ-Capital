@@ -19,6 +19,10 @@ export function NewRunWizard({ onStarted }: { onStarted: () => void }) {
 
   return (
     <div className="mx-auto max-w-lg space-y-6 rounded-2xl border border-panel-border bg-panel/50 p-6">
+      <p className="text-sm text-text-dim">
+        Deploy operators, bankers, lawyers, lobbyists, politicians, and influencers. Manage cash, trust,
+        influence, and talent. Win by completing any 2 victory paths.
+      </p>
       <div>
         <label className="text-xs uppercase tracking-wider text-text-dim">Company Name</label>
         <input
@@ -71,7 +75,7 @@ export function NewRunWizard({ onStarted }: { onStarted: () => void }) {
         disabled={!name.trim()}
         className="w-full rounded-xl bg-accent py-3 font-semibold text-background hover:opacity-90 disabled:opacity-40"
       >
-        Launch Company
+        Enter the Game
       </button>
     </div>
   );

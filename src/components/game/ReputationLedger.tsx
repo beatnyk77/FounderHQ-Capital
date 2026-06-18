@@ -14,7 +14,7 @@ export function ReputationLedger({ run }: Props) {
   return (
     <div className="rounded-lg border border-panel-border bg-background/50 p-3">
       <div className="flex items-baseline justify-between gap-2">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-text-dim">Reputation Ledger</p>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-text-dim">Influence Ops</p>
         <p className="font-mono text-xs text-accent">
           {run.reputation} ★ {tier}
         </p>
@@ -44,7 +44,7 @@ export function ReputationLedger({ run }: Props) {
           ))}
         </ul>
       ) : (
-        <p className="mt-2 text-[10px] text-text-dim">No reputation swings yet — decisions will move the narrative.</p>
+        <p className="mt-2 text-[10px] text-text-dim">No trust swings yet — influencer and operator moves will shift the narrative.</p>
       )}
     </div>
   );

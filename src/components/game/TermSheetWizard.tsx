@@ -41,6 +41,7 @@ export function TermSheetWizard({
 
   return (
     <div className="mt-3 space-y-3">
+      <p className="font-mono text-[10px] text-accent">Banker desk — term sheet negotiation</p>
       <div className="flex gap-1">
         {(["review", "counter", "resolve"] as const).map((s, i) => {
           const active = step === s;

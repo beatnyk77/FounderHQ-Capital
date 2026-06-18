@@ -26,7 +26,9 @@ export function IntelDossierPanel({ article, run, onInvestigate, onClose }: Prop
     <div className="rounded-lg border border-violet-500/40 bg-violet-950/20 p-4">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="text-[10px] uppercase tracking-widest text-violet-300">Intel Dossier</p>
+          <p className="text-[10px] uppercase tracking-widest text-violet-300">
+            {article.intelType === "regulatory" ? "Lobbyist Brief" : "Intel Dossier"}
+          </p>
           <p className="mt-1 font-mono text-[10px] text-accent">{article.outlet} · Wk {article.week}</p>
         </div>
         <button
@@ -64,7 +66,7 @@ export function IntelDossierPanel({ article, run, onInvestigate, onClose }: Prop
           disabled={!investigable}
           className="mt-3 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-40"
         >
-          Investigate (−{fmtMoney(cost)})
+          {article.intelType === "regulatory" ? "Lobbyist brief" : "Investigate"} (−{fmtMoney(cost)})
         </button>
       )}
     </div>

@@ -100,7 +100,7 @@ export function DealCard({
               Health {target.healthScore.toFixed(0)}/100
             </p>
           ) : (
-            <p className="mt-1 text-[10px] text-text-dim">Health unknown — scout for $25K</p>
+            <p className="mt-1 text-[10px] text-text-dim">Health unknown — due diligence for $25K</p>
           )}
           <div className="mt-1 flex flex-wrap gap-1">
             <span className="rounded bg-background px-1.5 py-0.5 font-mono text-[10px] text-accent">
@@ -122,7 +122,7 @@ export function DealCard({
               disabled={!canScout}
               className="rounded-lg border border-accent/50 px-2 py-1 text-[10px] font-medium text-accent hover:bg-accent/10 disabled:opacity-40"
             >
-              Scout
+              Due diligence
             </button>
           )}
           {scouted && onAccelerate && heat < 80 && (
@@ -158,7 +158,7 @@ export function DealCard({
               disabled={!canAfford}
               className="rounded-lg bg-violet-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-600 disabled:opacity-40"
             >
-              Deal Room
+              Legal close
             </button>
           ) : (
             <button
@@ -166,7 +166,7 @@ export function DealCard({
               disabled={!canAfford}
               className="rounded-lg bg-violet-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-600 disabled:opacity-40"
             >
-              Acquire
+              Acquire rival
             </button>
           )}
         </div>

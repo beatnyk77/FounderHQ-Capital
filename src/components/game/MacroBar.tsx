@@ -44,6 +44,12 @@ export function MacroBar({ run }: { run: GameRun }) {
           <span className="text-text-dim">
             {industry.toUpperCase()} <span className="text-positive">{fmtPct(sectorIndex - 100)}</span>
           </span>
+          <span className="text-text-dim">
+            Regulatory{" "}
+            <span className={macro.regulatoryStance > 0.5 ? "text-negative" : "text-positive"}>
+              {fmtPct(macro.regulatoryStance * 100)}
+            </span>
+          </span>
         </div>
       </div>
     </div>

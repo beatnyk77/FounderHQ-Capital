@@ -28,7 +28,8 @@ export default function Home() {
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-accent">Capital Markets Sim</p>
           <h1 className="mt-3 text-4xl font-bold tracking-tight md:text-5xl">FounderHQ Capital</h1>
           <p className="mx-auto mt-4 max-w-xl text-text-dim">
-            Build your startup. Raise capital. Acquire rivals. Survive the cycle. One game week every 2.5 minutes.
+            Deploy specialists. Control cash, trust, influence, and talent. Acquire rivals, capture markets,
+            and win by completing 2 victory paths. One game week every 2.5 minutes.
           </p>
         </header>
 
